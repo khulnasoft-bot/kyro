@@ -1,0 +1,37 @@
+[package]
+name = "kyro-examples"
+version = "0.1.0"
+edition = "2021"
+description = "Small Rust examples demonstrating LLM primitives"
+
+[dependencies]
+rand = "0.9"
+candle-core = "0.10.2"
+candle-nn = "0.10.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokenizers = "0.13"
+
+[[example]]
+name = "pattern_matching"
+path = "src/pattern_matching.rs"
+
+[[example]]
+name = "tokenization_demo"
+path = "src/tokenization.rs"
+
+[[example]]
+name = "attention_demo"
+path = "src/attention.rs"
+
+[[example]]
+name = "embedding_demo"
+path = "src/embedding.rs"
+
+[[example]]
+name = "kv_demo"
+path = "src/kv_demo.rs"
+
+[[example]]
+name = "small_trainer"
+path = "src/small_trainer.rs"
