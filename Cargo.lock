@@ -2007,8 +2007,10 @@ dependencies = [
  "safetensors 0.3.3",
  "serde",
  "serde_json",
+ "tempfile",
  "tokenizers 0.13.4",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]

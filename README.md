@@ -33,6 +33,33 @@ cargo run --release
 
 The API will be available at `http://localhost:3000/v1/chat/completions`.
 
+### Model Configuration
+
+Startup is configured via CLI flags or environment variables:
+
+| Flag | Environment variable | Description |
+| ---- | -------------------- | ----------- |
+| `--model-path` | `KYRO_MODEL_PATH` | Path to a Safetensors model directory or a `.gguf` file |
+| `--tokenizer-path` | `KYRO_TOKENIZER_PATH` | Path to a HuggingFace `tokenizer.json` |
+| `--model-name` | `KYRO_MODEL_NAME` | Served model name for request validation (default: `kyro`) |
+
+Example with a real model:
+
+```bash
+cargo run --release -- \
+  --model-path /models/Llama-3-8B \
+  --tokenizer-path /models/Llama-3-8B/tokenizer.json \
+  --model-name llama3
+```
+
+If `--model-path` is omitted, the engine starts with a dummy model for
+development. An invalid model path or tokenizer fails startup with a clear
+error.
+
+The chat completions endpoint accepts OpenAI-compatible `messages` (or a raw
+`prompt`), streams SSE chunks when `stream: true`, and validates the requested
+`model` against the configured name.
+
 ### Benchmarking
 
 To stress test the engine under concurrent load:

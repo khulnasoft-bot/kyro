@@ -4,6 +4,7 @@ use anyhow::Result;
 use std::path::Path;
 use tokenizers::Tokenizer;
 
+#[derive(Clone)]
 pub struct LuminaTokenizer {
     tokenizer: Tokenizer,
 }
