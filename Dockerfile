@@ -36,6 +36,10 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+# Run as an unprivileged user with no shell for minimal privilege
+RUN useradd --system --no-create-home --shell /usr/sbin/nologin kyro
+USER kyro
+
 # Copy binary from builder
 COPY --from=builder /usr/src/kyro/target/release/kyro /usr/local/bin/kyro
 

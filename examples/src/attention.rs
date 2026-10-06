@@ -5,8 +5,11 @@ use candle_core::{Device, Tensor, D};
 use candle_nn::ops::softmax;
 
 fn scaled_dot_product_attention(
-    q: &Tensor, k: &Tensor, v: &Tensor,
-    num_heads: usize, head_dim: usize,
+    q: &Tensor,
+    k: &Tensor,
+    v: &Tensor,
+    num_heads: usize,
+    head_dim: usize,
 ) -> candle_core::Result<Tensor> {
     let (b_sz, seq_len, _) = q.dims3()?;
     let q = q.reshape((b_sz, seq_len, num_heads, head_dim))?;
@@ -27,7 +30,10 @@ fn main() -> candle_core::Result<()> {
     let hidden_dim = num_heads * head_dim;
 
     println!("=== Scaled Dot-Product Attention Demo ===");
-    println!("batch_size={}, seq_len={}, num_heads={}, head_dim={}", batch_size, seq_len, num_heads, head_dim);
+    println!(
+        "batch_size={}, seq_len={}, num_heads={}, head_dim={}",
+        batch_size, seq_len, num_heads, head_dim
+    );
 
     let q = Tensor::randn(0.0, 1.0, (batch_size, seq_len, hidden_dim), &device)?;
     let k = Tensor::randn(0.0, 1.0, (batch_size, seq_len, hidden_dim), &device)?;

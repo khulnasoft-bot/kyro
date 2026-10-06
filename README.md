@@ -42,6 +42,11 @@ Startup is configured via CLI flags or environment variables:
 | `--model-path` | `KYRO_MODEL_PATH` | Path to a Safetensors model directory or a `.gguf` file |
 | `--tokenizer-path` | `KYRO_TOKENIZER_PATH` | Path to a HuggingFace `tokenizer.json` |
 | `--model-name` | `KYRO_MODEL_NAME` | Served model name for request validation (default: `kyro`) |
+| `--host` | `KYRO_HOST` | Bind address (default: `0.0.0.0`) |
+| `--port` | `KYRO_PORT` | Bind port (default: `3000`) |
+| — | `KYRO_MAX_TOKENS_CAP` | Max allowed `max_tokens` per request (default: 4096) |
+| — | `KYRO_MAX_PROMPT_BYTES` | Max prompt size in bytes (default: 65536) |
+| — | `KYRO_MAX_MESSAGES` | Max messages per chat request (default: 256) |
 
 Example with a real model:
 

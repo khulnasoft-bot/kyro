@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
 use crate::api::tokenizer::LuminaTokenizer;
+use crate::error::ApiError;
+use crate::metrics::EngineMetrics;
 use crate::scheduler::continuous_batching::{Request, Scheduler};
 use axum::{
     extract::State,
@@ -21,6 +23,11 @@ pub struct AppState {
     pub notify: Arc<Notify>,
     pub tokenizer: Option<Arc<LuminaTokenizer>>,
     pub model_name: String,
+    pub metrics: Option<Arc<EngineMetrics>>,
+    pub registry: Option<Arc<prometheus::Registry>>,
+    pub max_tokens_cap: usize,
+    pub max_prompt_bytes: usize,
+    pub max_messages: usize,
 }
 
 impl AppState {
@@ -35,7 +42,34 @@ impl AppState {
             notify,
             tokenizer,
             model_name,
+            metrics: None,
+            registry: None,
+            max_tokens_cap: 4096,
+            max_prompt_bytes: 64 * 1024,
+            max_messages: 256,
         }
+    }
+
+    pub fn with_metrics(
+        mut self,
+        metrics: Arc<EngineMetrics>,
+        registry: Arc<prometheus::Registry>,
+    ) -> Self {
+        self.metrics = Some(metrics);
+        self.registry = Some(registry);
+        self
+    }
+
+    pub fn with_limits(
+        mut self,
+        max_tokens_cap: usize,
+        max_prompt_bytes: usize,
+        max_messages: usize,
+    ) -> Self {
+        self.max_tokens_cap = max_tokens_cap;
+        self.max_prompt_bytes = max_prompt_bytes;
+        self.max_messages = max_messages;
+        self
     }
 }
 
@@ -136,60 +170,67 @@ pub async fn chat_completions(
     Json(payload): Json<ChatCompletionRequest>,
 ) -> impl IntoResponse {
     if payload.model != state.model_name {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({
-                "error": {
-                    "message": format!("Unsupported model: {}", payload.model),
-                    "type": "invalid_request_error",
-                }
-            })),
-        )
+        return ApiError::bad_request(format!("Unsupported model: {}", payload.model))
             .into_response();
+    }
+
+    if let Some(m) = &payload.messages {
+        if m.len() > state.max_messages {
+            return ApiError::bad_request(format!(
+                "Too many messages (max {})",
+                state.max_messages
+            ))
+            .into_response();
+        }
+    }
+    if let Some(mt) = payload.max_tokens {
+        if mt == 0 || mt > state.max_tokens_cap {
+            return ApiError::bad_request(format!(
+                "max_tokens must be in 1..={}",
+                state.max_tokens_cap
+            ))
+            .into_response();
+        }
+    }
+    if let Some(t) = payload.temperature {
+        if !(0.0..=2.0).contains(&t) {
+            return ApiError::bad_request("temperature must be in [0, 2]").into_response();
+        }
+    }
+    if let Some(p) = payload.top_p {
+        if !(0.0..=1.0).contains(&p) {
+            return ApiError::bad_request("top_p must be in (0, 1]").into_response();
+        }
+    }
+    if let Some(metrics) = &state.metrics {
+        metrics
+            .requests_by_model
+            .with_label_values(&[&state.model_name])
+            .inc();
     }
 
     let prompt_text = match (&payload.prompt, &payload.messages) {
         (Some(p), _) => p.clone(),
         (None, Some(msgs)) => messages_to_prompt(msgs),
         (None, None) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(serde_json::json!({
-                    "error": {
-                        "message": "Request must include either 'messages' or 'prompt'",
-                        "type": "invalid_request_error",
-                    }
-                })),
-            )
+            return ApiError::bad_request("Request must include either 'messages' or 'prompt'")
                 .into_response();
         }
     };
+
+    if prompt_text.len() > state.max_prompt_bytes {
+        return ApiError::bad_request(format!("Prompt exceeds {} bytes", state.max_prompt_bytes))
+            .into_response();
+    }
 
     let prompt_tokens = match &state.tokenizer {
         Some(tok) => match tok.encode(&prompt_text) {
             Ok(ids) if !ids.is_empty() => ids,
             Ok(_) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({
-                        "error": {
-                            "message": "Prompt produced no tokens",
-                            "type": "invalid_request_error",
-                        }
-                    })),
-                )
-                    .into_response();
+                return ApiError::bad_request("Prompt produced no tokens").into_response();
             }
             Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(serde_json::json!({
-                        "error": {
-                            "message": format!("Failed to encode prompt: {}", e),
-                            "type": "invalid_request_error",
-                        }
-                    })),
-                )
+                return ApiError::bad_request(format!("Failed to encode prompt: {}", e))
                     .into_response();
             }
         },
@@ -224,6 +265,11 @@ pub async fn chat_completions(
     {
         let mut sched = state.scheduler.lock().await;
         sched.add_request(request);
+        if let Some(metrics) = &state.metrics {
+            metrics
+                .queue_depth
+                .set((sched.waiting_queue.len() + sched.running_queue.len()) as f64);
+        }
     }
     state.notify.notify_one();
 
@@ -317,9 +363,40 @@ pub async fn chat_completions(
     }
 }
 
+pub async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    match &state.registry {
+        Some(registry) => {
+            if let Some(metrics) = &state.metrics {
+                let sched = state.scheduler.lock().await;
+                metrics.cache_hits.set(sched.cache_hits as f64);
+                metrics.cache_misses.set(sched.cache_misses as f64);
+                metrics
+                    .queue_depth
+                    .set((sched.waiting_queue.len() + sched.running_queue.len()) as f64);
+                drop(sched);
+            }
+            use prometheus::Encoder;
+            let mut buffer = Vec::new();
+            let encoder = prometheus::TextEncoder::new();
+            match encoder.encode(&registry.gather(), &mut buffer) {
+                Ok(_) => (
+                    StatusCode::OK,
+                    [("content-type", prometheus::TEXT_FORMAT)],
+                    String::from_utf8(buffer).unwrap_or_default(),
+                )
+                    .into_response(),
+                Err(e) => ApiError::bad_request(format!("Failed to encode metrics: {}", e))
+                    .into_response(),
+            }
+        }
+        None => ApiError::bad_request("Metrics registry not configured").into_response(),
+    }
+}
+
 pub fn app(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/v1/chat/completions", post(chat_completions))
         .route("/health", get(|| async { "OK" }))
+        .route("/metrics", get(metrics_handler))
         .with_state(state)
 }

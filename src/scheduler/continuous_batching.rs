@@ -43,6 +43,10 @@ pub struct Scheduler {
     pub running_queue: Vec<Request>,
     pub block_manager: BlockManager,
     pub config: SchedulerConfig,
+    /// Number of requests that reused at least one cached prefix block.
+    pub cache_hits: u64,
+    /// Number of requests that required a full (cold) prefill.
+    pub cache_misses: u64,
 }
 
 impl Scheduler {
@@ -52,6 +56,8 @@ impl Scheduler {
             running_queue: Vec::new(),
             block_manager,
             config,
+            cache_hits: 0,
+            cache_misses: 0,
         }
     }
 
@@ -103,6 +109,11 @@ impl Scheduler {
                 let mut req = self.waiting_queue.pop_front().unwrap();
                 req.cached_prefix_len = cached_len;
                 req.prefill_cursor = cached_len;
+                if cached_len > 0 {
+                    self.cache_hits += 1;
+                } else {
+                    self.cache_misses += 1;
+                }
 
                 let remaining = req.prompt_tokens.len() - req.prefill_cursor;
                 let chunk_size = std::cmp::min(remaining, self.config.max_prefill_chunk_size);

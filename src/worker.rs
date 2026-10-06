@@ -65,8 +65,7 @@ impl Worker {
                                 is_prefill: true,
                             });
                         } else if req.cached_prefix_len == req.prompt_tokens.len() {
-                            let last_token: u32 =
-                                req.prompt_tokens.last().copied().unwrap_or(0);
+                            let last_token: u32 = req.prompt_tokens.last().copied().unwrap_or(0);
                             batch.push(WorkItem {
                                 req_id: *req_id,
                                 input: vec![last_token],
@@ -81,8 +80,7 @@ impl Worker {
 
                 for req_id in &to_decode {
                     if let Some(req) = scheduler.running_queue.iter().find(|r| r.id == *req_id) {
-                        let last_token: u32 =
-                            req.generated_tokens.last().copied().unwrap_or(0);
+                        let last_token: u32 = req.generated_tokens.last().copied().unwrap_or(0);
                         batch.push(WorkItem {
                             req_id: *req_id,
                             input: vec![last_token],
@@ -161,12 +159,7 @@ impl Worker {
         }
     }
 
-    fn sample_last_position(
-        &self,
-        logits: &Tensor,
-        temperature: f32,
-        top_p: f32,
-    ) -> Result<u32> {
+    fn sample_last_position(&self, logits: &Tensor, temperature: f32, top_p: f32) -> Result<u32> {
         // logits may be [vocab], [seq, vocab], or [batch, seq, vocab]; sample
         // from the last sequence position, which corresponds to the prediction
         // for the next token.

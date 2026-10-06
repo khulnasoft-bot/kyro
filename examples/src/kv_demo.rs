@@ -10,14 +10,19 @@ struct SimpleKVCache {
 
 impl SimpleKVCache {
     fn new(max_size: usize) -> Self {
-        Self { cache: HashMap::new(), max_size }
+        Self {
+            cache: HashMap::new(),
+            max_size,
+        }
     }
 
     fn insert(&mut self, req_id: u64, tokens: usize) {
         self.cache.insert(req_id, vec![0.0; tokens * 64]);
         if self.cache.len() > self.max_size {
             let oldest = self.cache.keys().next().copied();
-            if let Some(k) = oldest { self.cache.remove(&k); }
+            if let Some(k) = oldest {
+                self.cache.remove(&k);
+            }
         }
     }
 
@@ -33,7 +38,10 @@ struct RadixCache {
 
 impl RadixCache {
     fn new(capacity: usize) -> Self {
-        Self { nodes: HashMap::new(), capacity }
+        Self {
+            nodes: HashMap::new(),
+            capacity,
+        }
     }
 
     fn match_prefix(&self, tokens: &[u32]) -> (usize, usize) {
@@ -54,7 +62,9 @@ impl RadixCache {
         self.nodes.insert(tokens.to_vec(), num_blocks);
         if self.nodes.len() > self.capacity {
             let oldest = self.nodes.keys().next().cloned();
-            if let Some(k) = oldest { self.nodes.remove(&k); }
+            if let Some(k) = oldest {
+                self.nodes.remove(&k);
+            }
         }
     }
 }
@@ -89,9 +99,16 @@ fn main() {
     let prompt_tokens = vec![1u32, 2, 3, 4, 5, 6, 7, 8, 9, 10];
     let cached_len = 3;
     let remaining = prompt_tokens.len() - cached_len;
-    println!("Full prompt: {} tokens, Cached: {} tokens", prompt_tokens.len(), cached_len);
+    println!(
+        "Full prompt: {} tokens, Cached: {} tokens",
+        prompt_tokens.len(),
+        cached_len
+    );
     println!("Tokens to process: {}", remaining);
-    println!("TTFT improvement: {:.1}% reduction", (1.0 - remaining as f64 / prompt_tokens.len() as f64) * 100.0);
+    println!(
+        "TTFT improvement: {:.1}% reduction",
+        (1.0 - remaining as f64 / prompt_tokens.len() as f64) * 100.0
+    );
 
     println!("\nKV cache demo complete!");
     println!("Maps to:");
