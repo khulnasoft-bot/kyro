@@ -181,3 +181,59 @@ async fn test_streaming_sse_completion() {
     assert!(text.contains("chat.completion.chunk"));
     assert!(text.contains("finish_reason"));
 }
+
+#[tokio::test]
+async fn test_metrics_endpoint() {
+    let (state, _tmp) = setup_engine();
+    // Attach a fresh registry to the state so /metrics responds 200.
+    let registry = std::sync::Arc::new(prometheus::Registry::new());
+    let metrics = kyro::metrics::EngineMetrics::new(&registry).unwrap();
+    let state = std::sync::Arc::new(
+        AppState::new(
+            state.scheduler.clone(),
+            state.notify.clone(),
+            Some(state.tokenizer.clone().unwrap()),
+            "kyro".to_string(),
+        )
+        .with_metrics(metrics, registry),
+    );
+    let app = openai::app(state);
+    let response = tower::ServiceExt::oneshot(
+        app,
+        axum::http::Request::builder()
+            .uri("/metrics")
+            .body(axum::body::Body::empty())
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), 200);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let text = String::from_utf8(bytes.to_vec()).unwrap();
+    assert!(text.contains("kyro_requests_total"));
+}
+
+#[tokio::test]
+async fn test_invalid_temperature_rejected() {
+    let (state, _tmp) = setup_engine();
+    let app = openai::app(state);
+    let body = serde_json::json!({
+        "model": "kyro",
+        "temperature": 5.0,
+        "messages": [{"role": "user", "content": "hello"}]
+    });
+    let response = tower::ServiceExt::oneshot(
+        app,
+        axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), 400);
+}

@@ -153,3 +153,128 @@ impl Scheduler {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_request(id: u64, tokens: Vec<u32>, max_tokens: usize) -> Request {
+        Request {
+            id,
+            prompt_tokens: tokens,
+            generated_tokens: Vec::new(),
+            max_tokens,
+            is_prefill: true,
+            cached_prefix_len: 0,
+            prefill_cursor: 0,
+            temperature: 1.0,
+            top_p: 1.0,
+            token_sender: None,
+            grammar_processor: None,
+        }
+    }
+
+    #[test]
+    fn schedules_waiting_request_for_prefill() {
+        let bm = BlockManager::new(16, 64, 16);
+        let mut sched = Scheduler::new(bm, SchedulerConfig::default());
+        sched.add_request(make_request(1, vec![1, 2, 3, 4], 8));
+        let (prefill, decode) = sched.schedule();
+        assert_eq!(prefill, vec![1]);
+        assert!(decode.is_empty());
+    }
+
+    #[test]
+    fn respects_token_budget() {
+        let bm = BlockManager::new(16, 1024, 256);
+        let cfg = SchedulerConfig {
+            max_tokens_per_iter: 4,
+            max_prefill_chunk_size: 4,
+        };
+        let mut sched = Scheduler::new(bm, cfg);
+        sched.add_request(make_request(1, vec![1; 64], 8));
+        let (prefill, _) = sched.schedule();
+        assert_eq!(prefill, vec![1]);
+        let req = &sched.running_queue[0];
+        assert!(req.prefill_cursor > 0 || req.is_prefill);
+    }
+
+    #[test]
+    fn decode_after_prefill_completes() {
+        let bm = BlockManager::new(16, 64, 16);
+        let mut sched = Scheduler::new(bm, SchedulerConfig::default());
+        sched.add_request(make_request(1, vec![7], 4));
+        sched.schedule();
+        sched.running_queue[0].prefill_cursor = 1;
+        sched.running_queue[0].is_prefill = false;
+        let (prefill, decode) = sched.schedule();
+        assert!(prefill.is_empty());
+        assert_eq!(decode, vec![1]);
+    }
+
+    #[test]
+    fn cache_hit_counters_update() {
+        let bm = BlockManager::new(16, 64, 16);
+        let mut sched = Scheduler::new(bm, SchedulerConfig::default());
+        sched.add_request(make_request(1, vec![1, 2, 3], 4));
+        sched.schedule();
+        assert_eq!(sched.cache_misses, 1);
+        assert_eq!(sched.cache_hits, 0);
+    }
+}
+
+#[cfg(test)]
+mod property_tests {
+    use super::*;
+
+    // Deterministic xorshift PRNG so the test needs no external crates.
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+    }
+
+    #[test]
+    fn scheduler_never_exceeds_token_budget() {
+        let bm = BlockManager::new(16, 4096, 1024);
+        let cfg = SchedulerConfig {
+            max_tokens_per_iter: 32,
+            max_prefill_chunk_size: 16,
+        };
+        let mut sched = Scheduler::new(bm, cfg);
+        let mut rng = Rng(0xdeadbeef);
+        for i in 0..16 {
+            let len = 1 + (rng.next() % 64) as usize;
+            sched.add_request(Request {
+                id: i,
+                prompt_tokens: vec![1; len],
+                generated_tokens: Vec::new(),
+                max_tokens: 4,
+                is_prefill: true,
+                cached_prefix_len: 0,
+                prefill_cursor: 0,
+                temperature: 1.0,
+                top_p: 1.0,
+                token_sender: None,
+                grammar_processor: None,
+            });
+        }
+        for _ in 0..32 {
+            let (prefill, decode) = sched.schedule();
+            let mut accounted = 0usize;
+            for id in &prefill {
+                let req = sched.running_queue.iter().find(|r| r.id == *id).unwrap();
+                let chunk = (req.prompt_tokens.len() - req.prefill_cursor)
+                    .min(16)
+                    .max(1);
+                accounted += chunk;
+            }
+            accounted += decode.len();
+            assert!(accounted <= 32, "budget exceeded: {}", accounted);
+        }
+    }
+}

@@ -1,5 +1,8 @@
 # Kyro LLM Engine
 
+![CI](https://github.com/nrelab/kyro/actions/workflows/ci.yml/badge.svg)
+![Coverage](https://img.shields.io/badge/coverage-run%20cargo%20llvm--cov-blue)
+
 Kyro is a high-throughput LLM serving engine written in Rust, inspired by vLLM and TGI. It leverages the `candle` ML framework for efficient tensor operations and `tokio` for high-concurrency async scheduling.
 
 ## Key Features

@@ -49,3 +49,6 @@ serde_json = "1.0"
 axum = "0.7"
 tokio = { version = "1.35", features = ["full"] }
 anyhow = "1.0"
+[[bench]]
+name = "scheduler_bench"
+harness = false
