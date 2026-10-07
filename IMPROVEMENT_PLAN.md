@@ -25,7 +25,7 @@
 | Tier 2 #5 — Speculative Decoding | 🔶 Partial | `SpeculativeDecoder::step` now unit-tested; verification loop and worker/API integration still missing |
 | Tier 2 #6 — Model Ecosystem | ❌ Open | Only Llama implemented |
 | Tier 2 #7 — Observability | 🔶 Partial | Grafana dashboard (`deploy/grafana-dashboard.json`) + SLO/alerting guide (`docs/slos.md`) added; no OTLP/tracing export yet |
-| Tier 3 #8 — Error Handling & Resilience | 🔶 Partial | Readiness probe, graceful SIGINT shutdown, request timeout added; no circuit breaker/retry yet |
+| Tier 3 #8 — Error Handling & Resilience | ✅ Done | Circuit breaker (10 consecutive errors → worker stops, `/ready` flips to 503, `kyro_worker_circuit_breaker_tripped` metric), transient-error retry with backoff, readiness probe, graceful SIGINT shutdown, request timeout |
 | Tier 3 #9 — Deployment Guide | 🔶 Partial | `docs/troubleshooting.md` + SLO guide added; Docker/K8s manifests already existed |
 | Tier 3 #10 — API Compatibility | 🔶 Partial | Request cancellation (`POST /v1/cancel` + `X-Request-Id` header) added; no tools/functions or priority queues yet |
 
@@ -327,12 +327,13 @@
 
 #### 8. **Improve Error Handling & Resilience**
 - **Effort:** 1–2 weeks
+- **Status:** ✅ Done (Oct 7, 2026)
 - **Tasks:**
-  - Add circuit breaker for scheduler failures.
-  - Implement graceful shutdown (drain in-flight requests).
-  - Add readiness probe (checks model load, scheduler health).
-  - Add retry logic for transient errors.
-  - Add detailed error codes/messages for debugging.
+  - Add circuit breaker for scheduler failures. — **DONE**: `CircuitBreaker` in `src/worker.rs`; 10 consecutive iteration failures stop the worker, clear the readiness flag, and set `kyro_worker_circuit_breaker_tripped`.
+  - Implement graceful shutdown (drain in-flight requests). — **DONE**: SIGINT handler via `with_graceful_shutdown`.
+  - Add readiness probe (checks model load, scheduler health). — **DONE**: `GET /ready`.
+  - Add retry logic for transient errors. — **DONE**: worker retries iterations with 100ms backoff until the breaker trips.
+  - Add detailed error codes/messages for debugging. — **DONE**: structured `tracing::warn!` with error and consecutive-error count; `kyro_worker_errors_total` counter.
 
 #### 9. **Production Deployment Guide & Checklist**
 - **Effort:** 1 week
@@ -380,8 +381,7 @@ By EOQ (end of quarter):
 - ⬜ Distributed inference works on 2+ GPUs (Tier 1 #1) — blocked on multi-GPU hardware.
 - 🔶 Quantization paths fully documented & working (Tier 1 #3) — GGUF done; AWQ/FP8 stubs documented in `docs/implementation_status.md`.
 - 🔶 LoRA and speculative decoding integrated (Tier 2 #4, #5) — unit-tested; integration pending.
-- 🔶 Production deployment guide published (Tier 3 #9) — troubleshooting + SLO/alerting guides added.
-- ⬜ 3+ model architectures supported (Tier 2 #6).
+- 🔶 Production deployment guide published (Tier 3 #9) — troubleshooting + SLO/alerting guides added.- ⬜ 3+ model architectures supported (Tier 2 #6).
 - 🔶 Comprehensive monitoring/alerting setup (Tier 2 #7) — Grafana dashboard + SLO rules added; OTLP pending.
 
 ---

@@ -15,6 +15,8 @@ pub struct EngineMetrics {
     pub time_to_first_token: Histogram,
     pub time_between_tokens: Histogram,
     pub kv_cache_usage: Gauge,
+    pub worker_errors_total: Counter,
+    pub worker_tripped: Gauge,
 }
 
 impl EngineMetrics {
@@ -80,6 +82,18 @@ impl EngineMetrics {
             registry
         )?;
 
+        let worker_errors_total = prometheus::register_counter_with_registry!(
+            "kyro_worker_errors_total",
+            "Total number of worker loop iteration errors",
+            registry
+        )?;
+
+        let worker_tripped = prometheus::register_gauge_with_registry!(
+            "kyro_worker_circuit_breaker_tripped",
+            "Whether the worker circuit breaker is tripped (1) or not (0)",
+            registry
+        )?;
+
         Ok(Arc::new(Self {
             total_requests,
             requests_by_model,
@@ -91,6 +105,8 @@ impl EngineMetrics {
             time_to_first_token,
             time_between_tokens,
             kv_cache_usage,
+            worker_errors_total,
+            worker_tripped,
         }))
     }
 }
@@ -128,6 +144,8 @@ mod tests {
             "kyro_ttft_ms",
             "kyro_tbt_ms",
             "kyro_token_latency_seconds",
+            "kyro_worker_errors_total",
+            "kyro_worker_circuit_breaker_tripped",
         ] {
             assert!(
                 names.iter().any(|n| n == expected),
