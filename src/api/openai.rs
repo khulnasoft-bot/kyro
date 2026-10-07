@@ -205,7 +205,7 @@ pub async fn chat_completions(
         }
     }
     if let Some(p) = payload.top_p {
-        if !(0.0..=1.0).contains(&p) {
+        if !(0.0..=1.0).contains(&p) || p == 0.0 {
             return ApiError::bad_request("top_p must be in (0, 1]").into_response();
         }
     }
