@@ -13,9 +13,12 @@ WORKDIR /usr/src/kyro
 
 # Copy manifests
 COPY Cargo.toml Cargo.lock ./
+COPY examples/Cargo.toml examples/Cargo.toml
 
 # Create dummy source to pre-build dependencies (caching)
-RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN mkdir src examples/src && echo "fn main() {}" > src/main.rs \
+    && for f in pattern_matching tokenization attention embedding kv_demo small_trainer; do \
+         echo "fn main() {}" > examples/src/$f.rs; done
 RUN cargo build --release
 
 # Copy actual source
