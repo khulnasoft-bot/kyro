@@ -26,6 +26,10 @@ Request:
 - Optional `priority` (0–100, default 0): higher-priority requests are
   dequeued by the scheduler before lower-priority ones; FIFO within equal
   priority.
+- Optional `tools`: OpenAI-style tool/function definitions
+  (`[{"type": "function", "function": {"name", "description", "parameters"}}]`,
+  max 64). Tool schemas are folded into the prompt so the model can
+  emit tool calls; responses are not auto-executed.
 - Non-streaming requests are bounded by `KYRO_REQUEST_TIMEOUT_SECS`
   (default 600); exceeding it returns `504` with an
   `{"error": {"message", "type"}}` body.

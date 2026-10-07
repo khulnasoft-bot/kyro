@@ -444,6 +444,68 @@ async fn test_priority_accepted() {
 }
 
 #[tokio::test]
+async fn test_tools_accepted() {
+    let (state, _tmp) = setup_engine();
+    let app = openai::app(state);
+    let body = serde_json::json!({
+        "model": "kyro",
+        "max_tokens": 4,
+        "messages": [{"role": "user", "content": "what is the weather?"}],
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get current weather",
+                "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}
+            }
+        }]
+    });
+    let response = tower::ServiceExt::oneshot(
+        app,
+        axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), 200);
+}
+
+#[tokio::test]
+async fn test_too_many_tools_rejected() {
+    let (state, _tmp) = setup_engine();
+    let app = openai::app(state);
+    let tools: Vec<serde_json::Value> = (0..65)
+        .map(|i| {
+            serde_json::json!({
+                "type": "function",
+                "function": {"name": format!("tool_{}", i)}
+            })
+        })
+        .collect();
+    let body = serde_json::json!({
+        "model": "kyro",
+        "messages": [{"role": "user", "content": "hello"}],
+        "tools": tools
+    });
+    let response = tower::ServiceExt::oneshot(
+        app,
+        axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), 400);
+}
+
+#[tokio::test]
 async fn test_cancel_unknown_request() {
     let (state, _tmp) = setup_engine();
     let app = openai::app(state);

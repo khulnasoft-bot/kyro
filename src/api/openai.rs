@@ -100,6 +100,7 @@ pub struct ChatCompletionRequest {
     pub max_tokens: Option<usize>,
     pub response_format: Option<ResponseFormat>,
     pub priority: Option<u32>,
+    pub tools: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -193,6 +194,31 @@ pub fn messages_to_prompt(messages: &[Message]) -> String {
     out
 }
 
+/// Render tool definitions as a prompt suffix describing each
+/// function's name, description, and JSON schema.
+pub fn render_tools(tools: &[serde_json::Value]) -> String {
+    tools
+        .iter()
+        .filter_map(|tool| {
+            let func = tool.get("function")?;
+            let name = func.get("name")?.as_str()?;
+            let description = func
+                .get("description")
+                .and_then(|d| d.as_str())
+                .unwrap_or("");
+            let parameters = func
+                .get("parameters")
+                .map(|p| p.to_string())
+                .unwrap_or_default();
+            Some(format!(
+                "- {}: {}\n  Schema: {}",
+                name, description, parameters
+            ))
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 pub async fn chat_completions(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChatCompletionRequest>,
@@ -258,6 +284,11 @@ async fn chat_completions_inner(
             return ApiError::bad_request("priority must be in 0..=100").into_response();
         }
     }
+    if let Some(tools) = &payload.tools {
+        if tools.len() > 64 {
+            return ApiError::bad_request("Too many tools (max 64)").into_response();
+        }
+    }
     if let Some(metrics) = &state.metrics {
         metrics
             .requests_by_model
@@ -278,6 +309,20 @@ async fn chat_completions_inner(
         return ApiError::bad_request(format!("Prompt exceeds {} bytes", state.max_prompt_bytes))
             .into_response();
     }
+
+    // Fold tool/function definitions into the prompt so the model can
+    // emit tool calls. OpenAI-style tools: [{"type": "function",
+    // "function": {"name", "description", "parameters"}}].
+    let prompt_text = match &payload.tools {
+        Some(tools) if !tools.is_empty() => {
+            format!(
+                "{}\n\nAvailable tools:\n{}",
+                prompt_text,
+                render_tools(tools)
+            )
+        }
+        _ => prompt_text,
+    };
 
     let prompt_tokens = match &state.tokenizer {
         Some(tok) => match tok.encode(&prompt_text) {
@@ -531,4 +576,59 @@ pub fn app(state: Arc<AppState>) -> Router {
         .route("/v1/models", get(list_models))
         .route("/metrics", get(metrics_handler))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_tools_includes_name_description_and_schema() {
+        let tools = serde_json::from_str::<Vec<serde_json::Value>>(
+            r#"[{"type": "function", "function": {
+                "name": "get_weather",
+                "description": "Get current weather",
+                "parameters": {"type": "object", "properties": {"city": {"type": "string"}}}
+            }}]"#,
+        )
+        .unwrap();
+        let rendered = render_tools(&tools);
+        assert!(rendered.contains("get_weather"));
+        assert!(rendered.contains("Get current weather"));
+        assert!(rendered.contains("Schema:"));
+        assert!(rendered.contains("properties"));
+    }
+
+    #[test]
+    fn render_tools_skips_malformed_entries() {
+        let tools = serde_json::from_str::<Vec<serde_json::Value>>(
+            r#"[{"type": "function"}, {"not": "a tool"}, {"function": {"name": "ok"}}]"#,
+        )
+        .unwrap();
+        let rendered = render_tools(&tools);
+        assert!(rendered.contains("ok"));
+        assert!(!rendered.contains("not"));
+    }
+
+    #[test]
+    fn render_tools_empty_list_is_empty() {
+        assert_eq!(render_tools(&[]), "");
+    }
+
+    #[test]
+    fn messages_to_prompt_renders_roles() {
+        let messages = vec![
+            Message {
+                role: "user".into(),
+                content: MessageContent::Text("hi".into()),
+            },
+            Message {
+                role: "assistant".into(),
+                content: MessageContent::Text("hello".into()),
+            },
+        ];
+        let prompt = messages_to_prompt(&messages);
+        assert!(prompt.contains("user: hi"));
+        assert!(prompt.contains("assistant: hello"));
+    }
 }
