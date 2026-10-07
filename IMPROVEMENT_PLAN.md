@@ -24,7 +24,7 @@
 | Tier 2 #4 — LoRA Integration | 🔶 Partial | `LoraLinear::forward` now unit-tested; loader, API parameter, and scheduler tracking still missing |
 | Tier 2 #5 — Speculative Decoding | 🔶 Partial | `SpeculativeDecoder::step` now unit-tested; verification loop and worker/API integration still missing |
 | Tier 2 #6 — Model Ecosystem | ❌ Open | Only Llama implemented |
-| Tier 2 #7 — Observability | 🔶 Partial | Grafana dashboard (`deploy/grafana-dashboard.json`) + SLO/alerting guide (`docs/slos.md`) added; no OTLP/tracing export yet |
+| Tier 2 #7 — Observability | ✅ Done | Grafana dashboard (`deploy/grafana-dashboard.json`), SLO/alerting guide (`docs/slos.md`), optional OTLP tracing export (`otlp` cargo feature, `KYRO_OTLP_ENDPOINT`, `chat_completions` span with model/stream attributes) |
 | Tier 3 #8 — Error Handling & Resilience | ✅ Done | Circuit breaker (10 consecutive errors → worker stops, `/ready` flips to 503, `kyro_worker_circuit_breaker_tripped` metric), transient-error retry with backoff, readiness probe, graceful SIGINT shutdown, request timeout |
 | Tier 3 #9 — Deployment Guide | 🔶 Partial | `docs/troubleshooting.md` + SLO guide added; Docker/K8s manifests already existed |
 | Tier 3 #10 — API Compatibility | 🔶 Partial | Request cancellation (`POST /v1/cancel` + `X-Request-Id` header), priority queuing (`priority` 0–100), request timeout added; no tools/functions support yet |
@@ -310,12 +310,13 @@
 #### 7. **Enhanced Observability & Monitoring**
 - **Effort:** 2–3 weeks
 - **Owner:** DevOps/Observability Team
+- **Status:** ✅ Done (Oct 7, 2026)
 - **Tasks:**
-  - Complete Prometheus metrics (histograms for TTFT/TBT, gauge for KV cache).
-  - Add structured logging with `tracing::span!` for request lifecycle.
-  - Add optional OpenTelemetry exporter (OTLP).
-  - Provide Grafana dashboard JSON example.
-  - Document SLOs and alerting rules.
+  - Complete Prometheus metrics (histograms for TTFT/TBT, gauge for KV cache). — **DONE** (plus worker error counters and circuit-breaker gauge).
+  - Add structured logging with `tracing::span!` for request lifecycle. — **DONE**: `chat_completions` span with `model`/`stream` attributes.
+  - Add optional OpenTelemetry exporter (OTLP). — **DONE**: `otlp` cargo feature; `KYRO_OTLP_ENDPOINT`/`--otlp-endpoint`; gRPC export via tonic; flushes on graceful shutdown.
+  - Provide Grafana dashboard JSON example. — **DONE**: `deploy/grafana-dashboard.json`.
+  - Document SLOs and alerting rules. — **DONE**: `docs/slos.md`.
   - **Acceptance Criteria:**
     - Metrics endpoint exposes all promised metrics.
     - Logs include trace IDs and structured fields.
@@ -382,7 +383,7 @@ By EOQ (end of quarter):
 - 🔶 Quantization paths fully documented & working (Tier 1 #3) — GGUF done; AWQ/FP8 stubs documented in `docs/implementation_status.md`.
 - 🔶 LoRA and speculative decoding integrated (Tier 2 #4, #5) — unit-tested; integration pending.
 - 🔶 Production deployment guide published (Tier 3 #9) — troubleshooting + SLO/alerting guides added.- ⬜ 3+ model architectures supported (Tier 2 #6).
-- 🔶 Comprehensive monitoring/alerting setup (Tier 2 #7) — Grafana dashboard + SLO rules added; OTLP pending.
+- ✅ Comprehensive monitoring/alerting setup (Tier 2 #7) — Grafana dashboard, SLO rules, optional OTLP tracing.
 
 ---
 

@@ -9,7 +9,7 @@ use axum::{
     http::StatusCode,
     response::{
         sse::{Event, Sse},
-        IntoResponse,
+        IntoResponse, Response,
     },
     routing::{get, post},
     Json, Router,
@@ -17,6 +17,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, Notify};
+use tracing::Instrument;
 
 pub struct AppState {
     pub scheduler: Arc<Mutex<Scheduler>>,
@@ -196,6 +197,20 @@ pub async fn chat_completions(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChatCompletionRequest>,
 ) -> impl IntoResponse {
+    let span = tracing::info_span!(
+        "chat_completions",
+        model = %payload.model,
+        stream = payload.stream.unwrap_or(false),
+    );
+    chat_completions_inner(State(state), Json(payload))
+        .instrument(span)
+        .await
+}
+
+async fn chat_completions_inner(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ChatCompletionRequest>,
+) -> Response {
     if !state.ready.load(std::sync::atomic::Ordering::SeqCst) {
         return ApiError::unavailable("Engine is not ready").into_response();
     }

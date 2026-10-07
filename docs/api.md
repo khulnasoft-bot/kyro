@@ -77,4 +77,18 @@ Request:
 
 Prometheus text exposition: request counters by model label, queue depth,
 prefix-cache hits/misses, token counters, TTFT/TBT histograms, KV-cache
-usage.
+usage, worker error counters, circuit-breaker state.
+
+## Distributed Tracing (optional)
+
+Build with the `otlp` feature and set `KYRO_OTLP_ENDPOINT` (or
+`--otlp-endpoint`) to export `tracing` spans to an OpenTelemetry
+collector (e.g. Jaeger, Tempo) over gRPC:
+
+```bash
+cargo run --release --features otlp -- \
+  --otlp-endpoint http://localhost:4317
+```
+
+The `chat_completions` span carries `model` and `stream` attributes;
+the provider flushes on graceful shutdown.
