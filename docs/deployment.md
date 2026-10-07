@@ -23,7 +23,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 ```
 
 GPU builds require the CUDA runtime and `--features cuda`; the default image
-runs on CPU/Metal.
+runs on CPU only.
 
 ## Docker Compose
 
