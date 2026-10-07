@@ -52,7 +52,7 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@27cdd3237bf9a6a2b668f3bcbfaa06949ae17deb # cargo-llvm-cov
       - name: Generate coverage
-        run: cargo llvm-cov --summary-only
+        run: cargo llvm-cov --summary-only --fail-under-lines 70
 
   bench:
     name: Scheduler Benchmark Smoke

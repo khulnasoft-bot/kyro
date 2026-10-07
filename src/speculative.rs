@@ -44,3 +44,25 @@ impl SpeculativeDecoder {
         Ok(draft_tokens)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::config::LlamaConfig;
+    use crate::model::llama::LlamaModel;
+
+    fn dummy_model() -> LoadedModel {
+        LoadedModel::Standard(LlamaModel::dummy(&LlamaConfig::llama_7b()).unwrap())
+    }
+
+    #[test]
+    fn step_returns_lookahead_tokens() {
+        let mut decoder = SpeculativeDecoder::new(dummy_model(), dummy_model(), 3);
+        let input = Tensor::new(&[1u32, 2, 3], &candle_core::Device::Cpu)
+            .unwrap()
+            .unsqueeze(0)
+            .unwrap();
+        let tokens = decoder.step(&input, 0).unwrap();
+        assert_eq!(tokens.len(), 3);
+    }
+}

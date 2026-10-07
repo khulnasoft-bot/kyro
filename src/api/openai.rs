@@ -15,7 +15,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use std::{convert::Infallible, sync::Arc};
+use std::{convert::Infallible, sync::Arc, time::Duration};
 use tokio::sync::{Mutex, Notify};
 
 pub struct AppState {
@@ -28,6 +28,8 @@ pub struct AppState {
     pub max_tokens_cap: usize,
     pub max_prompt_bytes: usize,
     pub max_messages: usize,
+    pub ready: Arc<std::sync::atomic::AtomicBool>,
+    pub request_timeout: Duration,
 }
 
 impl AppState {
@@ -47,7 +49,19 @@ impl AppState {
             max_tokens_cap: 4096,
             max_prompt_bytes: 64 * 1024,
             max_messages: 256,
+            ready: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            request_timeout: Duration::from_secs(600),
         }
+    }
+
+    pub fn with_readiness(mut self, ready: Arc<std::sync::atomic::AtomicBool>) -> Self {
+        self.ready = ready;
+        self
+    }
+
+    pub fn with_timeout(mut self, request_timeout: Duration) -> Self {
+        self.request_timeout = request_timeout;
+        self
     }
 
     pub fn with_metrics(
@@ -127,6 +141,11 @@ pub struct ChatCompletionResponse {
     pub choices: Vec<Choice>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CancelRequest {
+    pub request_id: u64,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Choice {
     pub index: usize,
@@ -176,6 +195,15 @@ pub async fn chat_completions(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<ChatCompletionRequest>,
 ) -> impl IntoResponse {
+    if !state.ready.load(std::sync::atomic::Ordering::SeqCst) {
+        return ApiError::unavailable("Engine is not ready").into_response();
+    }
+    tracing::info!(
+        model = %payload.model,
+        stream = payload.stream.unwrap_or(false),
+        "chat_completions request received"
+    );
+
     if payload.model != state.model_name {
         return ApiError::bad_request(format!("Unsupported model: {}", payload.model))
             .into_response();
@@ -288,6 +316,7 @@ pub async fn chat_completions(
     state.notify.notify_one();
 
     let model_name = state.model_name.clone();
+    let request_id_header = request_id.to_string();
 
     if payload.stream.unwrap_or(false) {
         let tokenizer = state.tokenizer.clone();
@@ -338,11 +367,29 @@ pub async fn chat_completions(
             yield Ok::<Event, Infallible>(Event::default().data(serde_json::to_string(&final_chunk).unwrap()));
         };
 
-        Sse::new(stream).into_response()
+        (
+            [(
+                axum::http::header::HeaderName::from_static("x-request-id"),
+                request_id_header,
+            )],
+            Sse::new(stream),
+        )
+            .into_response()
     } else {
         let mut ids: Vec<u32> = Vec::new();
-        while let Some(token) = rx.recv().await {
-            ids.push(token);
+        let deadline = tokio::time::Instant::now() + state.request_timeout;
+        loop {
+            match tokio::time::timeout_at(deadline, rx.recv()).await {
+                Ok(Some(token)) => ids.push(token),
+                Ok(None) => break,
+                Err(_) => {
+                    return ApiError::timeout(format!(
+                        "Request timed out after {:?}",
+                        state.request_timeout
+                    ))
+                    .into_response();
+                }
+            }
         }
 
         let full_content = match &state.tokenizer {
@@ -359,7 +406,7 @@ pub async fn chat_completions(
                 .join(""),
         };
 
-        Json(ChatCompletionResponse {
+        let body = Json(ChatCompletionResponse {
             id: format!("chatcmpl-{}", request_id),
             object: "chat.completion".to_string(),
             created: 1677652288,
@@ -372,8 +419,31 @@ pub async fn chat_completions(
                 },
                 finish_reason: "stop".to_string(),
             }],
-        })
-        .into_response()
+        });
+        (
+            [(
+                axum::http::header::HeaderName::from_static("x-request-id"),
+                request_id.to_string(),
+            )],
+            body,
+        )
+            .into_response()
+    }
+}
+
+pub async fn cancel_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<CancelRequest>,
+) -> impl IntoResponse {
+    if !state.ready.load(std::sync::atomic::Ordering::SeqCst) {
+        return ApiError::unavailable("Engine is not ready").into_response();
+    }
+    let mut sched = state.scheduler.lock().await;
+    if sched.cancel_request(payload.request_id) {
+        tracing::info!(request_id = payload.request_id, "request cancelled");
+        (StatusCode::OK, "cancelled").into_response()
+    } else {
+        ApiError::bad_request(format!("No such request: {}", payload.request_id)).into_response()
     }
 }
 
@@ -423,7 +493,19 @@ pub async fn list_models(State(state): State<Arc<AppState>>) -> impl IntoRespons
 pub fn app(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/v1/chat/completions", post(chat_completions))
+        .route("/v1/cancel", post(cancel_handler))
         .route("/health", get(|| async { "OK" }))
+        .route(
+            "/ready",
+            get(|State(state): State<Arc<AppState>>| async move {
+                use std::sync::atomic::Ordering::SeqCst;
+                if state.ready.load(SeqCst) {
+                    (StatusCode::OK, "ready").into_response()
+                } else {
+                    (StatusCode::SERVICE_UNAVAILABLE, "not ready").into_response()
+                }
+            }),
+        )
         .route("/v1/models", get(list_models))
         .route("/metrics", get(metrics_handler))
         .with_state(state)

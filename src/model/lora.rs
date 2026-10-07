@@ -45,3 +45,57 @@ impl LoraLinear {
         Ok(base_out)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use candle_core::Device;
+
+    fn test_linear() -> Linear {
+        Linear::new(
+            candle_core::Tensor::zeros((4, 4), candle_core::DType::F32, &Device::Cpu).unwrap(),
+            None,
+        )
+    }
+
+    #[test]
+    fn forward_without_adapter_returns_base() {
+        let layer = LoraLinear::new(test_linear());
+        let x = Tensor::ones((1, 4), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let out = layer.forward(&x, None).unwrap();
+        assert_eq!(out.dims(), &[1, 4]);
+    }
+
+    #[test]
+    fn forward_with_unknown_adapter_returns_base() {
+        let layer = LoraLinear::new(test_linear());
+        let x = Tensor::ones((1, 4), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let out = layer.forward(&x, Some("missing")).unwrap();
+        assert_eq!(out.dims(), &[1, 4]);
+    }
+
+    #[test]
+    fn forward_with_adapter_adds_lora_term() {
+        let mut layer = LoraLinear::new(test_linear());
+        let a = Tensor::ones((2, 4), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let b = Tensor::ones((4, 2), candle_core::DType::F32, &Device::Cpu).unwrap();
+        layer.add_adapter(LoraAdapter {
+            id: "test".into(),
+            a,
+            b,
+            alpha: 4.0,
+            rank: 2,
+        });
+        let x = Tensor::ones((1, 4), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let out = layer.forward(&x, Some("test")).unwrap();
+        // base is zero, lora = x @ A.T @ B.T * (alpha/rank) = 4 * 2 * (4/2) = 16
+        let val = out
+            .get(0)
+            .unwrap()
+            .get(0)
+            .unwrap()
+            .to_scalar::<f32>()
+            .unwrap();
+        assert!((val - 16.0).abs() < 1e-4, "expected ~16.0, got {}", val);
+    }
+}

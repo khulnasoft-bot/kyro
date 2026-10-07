@@ -1,7 +1,7 @@
 # Kyro LLM Engine
 
 ![CI](https://github.com/nrelab/kyro/actions/workflows/ci.yml/badge.svg)
-![Coverage](https://img.shields.io/badge/coverage-run%20cargo%20llvm--cov-blue)
+![Coverage](https://img.shields.io/badge/coverage-70%25-green)
 
 Kyro is a high-throughput LLM serving engine written in Rust, inspired by vLLM and TGI. It leverages the `candle` ML framework for efficient tensor operations and `tokio` for high-concurrency async scheduling.
 
@@ -11,20 +11,19 @@ Kyro is a high-throughput LLM serving engine written in Rust, inspired by vLLM a
 - **PagedAttention**: Virtual memory management for KV cache, eliminating memory fragmentation and enabling long-context serving.
 - **Prefix Caching (Radix Cache)**: Automatic reuse of KV cache for common prefixes (system prompts, multi-turn history), enabling near-zero Time-To-First-Token (TTFT).
 - **Chunked Prefill**: Eliminates "Prefill Stall" by interleaving large prompt processing with active decode steps.
-- **Speculative Decoding**: Accelerates generation by 2x using a lightweight draft model for token prediction and a target model for parallel verification.
-- **Distributed Inference**: Support for **Tensor Parallelism (TP)** and **Pipeline Parallelism (PP)** to serve massive models across multiple GPUs.
-- **Quantization Support**: Native support for **FP8 (Hopper)**, **AWQ (4-bit)**, and **GGUF** weight loading.
+- **Speculative Decoding**: Planned. Draft-model module exists (`src/speculative.rs`) but is not yet integrated into the worker loop or API.
+- **Distributed Inference**: Planned. The engine currently runs single-device; `DistributedContext` exists but is a stub (no NCCL, no TP/PP).
+- **Quantization Support**: GGUF weight loading via candle; FP8 and AWQ are on the roadmap (src/model/quantization is currently a simulation stub).
 - **Constrained Decoding**: Structured JSON-mode and Regex-constrained output via grammar-based sampling.
-- **Multi-LoRA Support**: Dynamic loading and switching of many task-specific adapters on a single base model.
+- **Multi-LoRA Support**: Planned. LoRA math exists (`src/model/lora.rs`) but weight loading, API parameters, and scheduler integration are not yet implemented.
 - **Observability**: Real-time Prometheus metrics for TTFT, TBT (Time Between Tokens), and KV cache utilization.
 
 ## Architecture
 
 1. **Frontend (Axum)**: Handles HTTP requests, streaming SSE, and health/metrics endpoints.
 2. **Scheduler (Continuous Batching)**: Manages request queues, prefix caching, and chunked prefill scheduling.
-3. **Model (Candle)**: Optimized Transformer blocks with support for multiple quantization formats (FP8, AWQ, GGUF), PagedAttention kernels, and LoRA adapters.
-4. **KV Cache (PagedAttention)**: Manages logical-to-physical block mapping via a **Reference-Counted BlockManager**, ensuring cached prefixes are protected from overwrite.
-5. **Distributed (NCCL)**: Handles multi-node/multi-GPU synchronization via `All-Reduce`.
+3. **Model (Candle)**: Optimized Transformer blocks with GGUF quantization support (FP8/AWQ planned), PagedAttention kernels, and LoRA adapters (integration pending).4. **KV Cache (PagedAttention)**: Manages logical-to-physical block mapping via a **Reference-Counted BlockManager**, ensuring cached prefixes are protected from overwrite.
+5. **Distributed (planned)**: Multi-node/multi-GPU synchronization via NCCL `All-Reduce` is not yet implemented.
 
 ## Getting Started
 
@@ -50,6 +49,7 @@ Startup is configured via CLI flags or environment variables:
 | — | `KYRO_MAX_TOKENS_CAP` | Max allowed `max_tokens` per request (default: 4096) |
 | — | `KYRO_MAX_PROMPT_BYTES` | Max prompt size in bytes (default: 65536) |
 | — | `KYRO_MAX_MESSAGES` | Max messages per chat request (default: 256) |
+| — | `KYRO_REQUEST_TIMEOUT_SECS` | Per-request timeout for non-streaming completions (default: 600) |
 
 Example with a real model:
 

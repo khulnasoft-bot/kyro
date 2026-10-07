@@ -14,6 +14,8 @@ pub struct AppConfig {
     pub max_prompt_bytes: usize,
     /// Maximum number of messages per request.
     pub max_messages: usize,
+    /// Per-request timeout for non-streaming completions.
+    pub request_timeout_secs: u64,
 }
 
 impl AppConfig {
@@ -44,6 +46,7 @@ impl AppConfig {
             max_tokens_cap: parse_env_usize("KYRO_MAX_TOKENS_CAP", 4096)?,
             max_prompt_bytes: parse_env_usize("KYRO_MAX_PROMPT_BYTES", 64 * 1024)?,
             max_messages: parse_env_usize("KYRO_MAX_MESSAGES", 256)?,
+            request_timeout_secs: parse_env_u64("KYRO_REQUEST_TIMEOUT_SECS", 600)?,
         };
         cfg.validate()?;
         Ok(cfg)
@@ -62,6 +65,9 @@ impl AppConfig {
         if self.max_messages == 0 {
             bail!("max_messages must be greater than zero");
         }
+        if self.request_timeout_secs == 0 {
+            bail!("request_timeout_secs must be greater than zero");
+        }
         if let Some(p) = &self.model_path {
             if !std::path::Path::new(p).exists() {
                 bail!("model path does not exist: {}", p);
@@ -73,6 +79,15 @@ impl AppConfig {
             }
         }
         Ok(())
+    }
+}
+
+fn parse_env_u64(name: &str, default: u64) -> Result<u64> {
+    match std::env::var(name) {
+        Ok(v) => v
+            .parse::<u64>()
+            .map_err(|_| anyhow::anyhow!("invalid {} value: {:?}", name, v)),
+        Err(_) => Ok(default),
     }
 }
 
@@ -110,6 +125,7 @@ mod tests {
             max_tokens_cap: 16,
             max_prompt_bytes: 1024,
             max_messages: 8,
+            request_timeout_secs: 600,
         };
         assert!(cfg.validate().is_err());
         cfg.model_name = "kyro".into();
@@ -127,6 +143,7 @@ mod tests {
             max_tokens_cap: 16,
             max_prompt_bytes: 1024,
             max_messages: 8,
+            request_timeout_secs: 600,
         };
         assert!(cfg.validate().is_err());
     }

@@ -30,3 +30,44 @@ impl KVCache {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn update_creates_blocks_up_to_id() {
+        let mut cache = KVCache::new(16);
+        cache
+            .update(
+                BlockId(3),
+                0,
+                &Tensor::zeros((1,), candle_core::DType::F32, &candle_core::Device::Cpu).unwrap(),
+                &Tensor::zeros((1,), candle_core::DType::F32, &candle_core::Device::Cpu).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(cache.blocks.len(), 4);
+    }
+
+    #[test]
+    fn update_on_existing_block_is_noop() {
+        let mut cache = KVCache::new(16);
+        cache
+            .update(
+                BlockId(0),
+                0,
+                &Tensor::zeros((1,), candle_core::DType::F32, &candle_core::Device::Cpu).unwrap(),
+                &Tensor::zeros((1,), candle_core::DType::F32, &candle_core::Device::Cpu).unwrap(),
+            )
+            .unwrap();
+        cache
+            .update(
+                BlockId(0),
+                1,
+                &Tensor::zeros((1,), candle_core::DType::F32, &candle_core::Device::Cpu).unwrap(),
+                &Tensor::zeros((1,), candle_core::DType::F32, &candle_core::Device::Cpu).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(cache.blocks.len(), 1);
+    }
+}

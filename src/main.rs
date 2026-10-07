@@ -88,6 +88,8 @@ async fn main() -> Result<()> {
 
     // 6. Start API Server
     let registry_arc = registry.clone();
+    let ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    ready.store(true, std::sync::atomic::Ordering::SeqCst);
     let app_state = Arc::new(
         kyro::api::openai::AppState::new(scheduler, notify, tokenizer, config.model_name.clone())
             .with_metrics(metrics.clone(), registry_arc.clone())
@@ -95,14 +97,21 @@ async fn main() -> Result<()> {
                 config.max_tokens_cap,
                 config.max_prompt_bytes,
                 config.max_messages,
-            ),
+            )
+            .with_readiness(ready)
+            .with_timeout(std::time::Duration::from_secs(config.request_timeout_secs)),
     );
     let app = kyro::api::openai::app(app_state);
     let addr = format!("{}:{}", config.host, config.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     info!("Kyro API serving on http://{}", addr);
 
-    axum::serve(listener, app).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(async {
+            let _ = tokio::signal::ctrl_c().await;
+            info!("Shutdown signal received; draining in-flight requests");
+        })
+        .await?;
 
     Ok(())
 }

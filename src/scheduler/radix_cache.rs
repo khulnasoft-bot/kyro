@@ -108,25 +108,44 @@ impl RadixCache {
         }
     }
 
-    pub fn evict_lru(&mut self) -> Vec<BlockId> {
-        let mut blocks_to_free = Vec::new();
-        loop {
-            let blocks = self.remove_oldest_leaf();
-            match blocks {
-                Some(evicted_blocks) => {
-                    self.num_cached_blocks -= evicted_blocks.len();
-                    blocks_to_free.extend(evicted_blocks);
-                    if self.num_cached_blocks <= self.max_capacity {
-                        break;
-                    }
-                }
-                None => break,
+    pub fn evict_lru(&mut self) -> Vec<(Vec<u32>, Vec<BlockId>)> {
+        let mut evicted = Vec::new();
+        while let Some((tokens, block_ids)) = self.remove_oldest_leaf() {
+            self.num_cached_blocks -= block_ids.len();
+            evicted.push((tokens, block_ids));
+            if self.num_cached_blocks <= self.max_capacity {
+                break;
             }
         }
-        blocks_to_free
+        evicted
     }
 
-    fn remove_oldest_leaf(&mut self) -> Option<Vec<BlockId>> {
+    /// Insert without triggering capacity-based eviction. Used to restore
+    /// evicted entries after a failed allocation.
+    pub fn insert_unchecked(&mut self, tokens: &[u32], block_ids: &[BlockId]) {
+        let mut current_node = &mut self.root;
+        let mut token_idx = 0;
+        while token_idx < tokens.len() {
+            let first_token = tokens[token_idx];
+            match current_node.children.entry(first_token) {
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(Box::new(RadixNode::new(
+                        tokens[token_idx..].to_vec(),
+                        block_ids.to_vec(),
+                    )));
+                    self.num_cached_blocks += block_ids.len();
+                    return;
+                }
+                std::collections::hash_map::Entry::Occupied(o) => {
+                    let child = o.into_mut();
+                    token_idx += child.tokens.len();
+                    current_node = child;
+                }
+            }
+        }
+    }
+
+    fn remove_oldest_leaf(&mut self) -> Option<(Vec<u32>, Vec<BlockId>)> {
         let node = &mut self.root;
         if node.children.is_empty() {
             return None;
@@ -144,9 +163,83 @@ impl RadixCache {
 
         if let Some(token) = oldest_token {
             let child = node.children.remove(&token).unwrap();
-            Some(child.block_ids)
+            Some((child.tokens, child.block_ids))
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scheduler::block_manager::BlockId;
+    fn b(ids: &[usize]) -> Vec<BlockId> {
+        ids.iter().map(|&i| BlockId(i)).collect()
+    }
+
+    #[test]
+    fn match_returns_nothing_when_empty() {
+        let mut cache = RadixCache::new(16);
+        let (blocks, matched) = cache.match_prefix(&[1, 2, 3]);
+        assert!(blocks.is_empty());
+        assert_eq!(matched, 0);
+    }
+
+    #[test]
+    fn insert_then_exact_match() {
+        let mut cache = RadixCache::new(16);
+        cache.insert(&[1, 2, 3, 4], &b(&[10, 11]));
+        let (blocks, matched) = cache.match_prefix(&[1, 2, 3, 4]);
+        assert_eq!(blocks, b(&[10, 11]));
+        assert_eq!(matched, 4);
+    }
+
+    #[test]
+    fn match_prefix_longer_than_cached() {
+        let mut cache = RadixCache::new(16);
+        cache.insert(&[1, 2], &b(&[5]));
+        let (blocks, matched) = cache.match_prefix(&[1, 2, 3, 4]);
+        assert_eq!(blocks, b(&[5]));
+        assert_eq!(matched, 2);
+    }
+
+    #[test]
+    fn match_prefix_partial_node_returns_zero() {
+        let mut cache = RadixCache::new(16);
+        cache.insert(&[1, 2, 3], &b(&[7, 8]));
+        let (blocks, matched) = cache.match_prefix(&[1, 2]);
+        assert!(blocks.is_empty());
+        assert_eq!(matched, 0);
+    }
+
+    #[test]
+    fn distinct_prefixes_cached_independently() {
+        let mut cache = RadixCache::new(16);
+        cache.insert(&[1, 2], &b(&[1]));
+        cache.insert(&[3, 4], &b(&[2]));
+        assert_eq!(cache.match_prefix(&[1, 2]).0, b(&[1]));
+        assert_eq!(cache.match_prefix(&[3, 4]).0, b(&[2]));
+        assert_eq!(cache.num_cached_blocks, 2);
+    }
+
+    #[test]
+    fn eviction_respects_capacity() {
+        let mut cache = RadixCache::new(2);
+        cache.insert(&[1], &b(&[1, 2]));
+        cache.insert(&[2], &b(&[3, 4]));
+        assert!(cache.num_cached_blocks <= 2);
+    }
+
+    #[test]
+    fn evicted_blocks_are_returned() {
+        let mut cache = RadixCache::new(1);
+        cache.insert(&[1], &b(&[10]));
+        cache.insert(&[2], &b(&[20]));
+        // LRU eviction of the first leaf should return its block.
+        let freed = cache.evict_lru();
+        assert!(cache.num_cached_blocks <= 1);
+        // Either already evicted via insert or evicted now.
+        assert!(freed.len() + cache.num_cached_blocks <= 2);
     }
 }

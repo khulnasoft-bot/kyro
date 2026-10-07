@@ -33,11 +33,39 @@ impl MoeLayer {
         let mut final_output = Tensor::zeros_like(&x_flat)?;
 
         // Simplified MoE: just use the top expert
-        let top_expert_idx = top_k_indices.get(0)?.to_scalar::<i64>()? as usize;
+        let top_expert_idx = top_k_indices.get(0)?.to_scalar::<u32>()? as usize;
         if top_expert_idx < self.experts.len() {
             final_output = self.experts[top_expert_idx].forward(&x_flat)?;
         }
 
         final_output.reshape((batch_size, seq_len, hidden_dim))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use candle_core::Device;
+
+    #[test]
+    fn forward_preserves_shape() {
+        let gate = Linear::new(
+            Tensor::ones((2, 4), candle_core::DType::F32, &Device::Cpu).unwrap(),
+            None,
+        );
+        let experts = vec![
+            Linear::new(
+                Tensor::ones((4, 4), candle_core::DType::F32, &Device::Cpu).unwrap(),
+                None,
+            ),
+            Linear::new(
+                Tensor::ones((4, 4), candle_core::DType::F32, &Device::Cpu).unwrap(),
+                None,
+            ),
+        ];
+        let moe = MoeLayer::new(gate, experts, 1);
+        let x = Tensor::ones((2, 3, 4), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let out = moe.forward(&x).unwrap();
+        assert_eq!(out.dims(), &[2, 3, 4]);
     }
 }

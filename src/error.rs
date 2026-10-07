@@ -32,6 +32,13 @@ impl ApiError {
             message: message.into(),
         }
     }
+
+    pub fn timeout(message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::GATEWAY_TIMEOUT,
+            message: message.into(),
+        }
+    }
 }
 
 impl IntoResponse for ApiError {
@@ -46,5 +53,35 @@ impl IntoResponse for ApiError {
             })),
         )
             .into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bad_request_has_400_status() {
+        let err = ApiError::bad_request("nope");
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert_eq!(err.message, "nope");
+    }
+
+    #[test]
+    fn timeout_has_504_status() {
+        let err = ApiError::timeout("slow");
+        assert_eq!(err.status, StatusCode::GATEWAY_TIMEOUT);
+    }
+
+    #[test]
+    fn unavailable_has_503_status() {
+        let err = ApiError::unavailable("down");
+        assert_eq!(err.status, StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn into_response_serializes_message() {
+        let resp = ApiError::bad_request("bad input").into_response();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 }
