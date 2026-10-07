@@ -6,14 +6,13 @@ use kyro::model::{config::LlamaConfig, llama::LlamaModel, loader::ModelLoader};
 use kyro::scheduler::block_manager::BlockManager;
 use kyro::scheduler::continuous_batching::{Scheduler, SchedulerConfig};
 use kyro::worker::Worker;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, Notify};
 
 /// Build a small WordLevel tokenizer saved to a temp file so tests exercise the
 /// real file-based tokenizer loading path.
 fn make_test_tokenizer() -> (LuminaTokenizer, tempfile::TempPath) {
-    let mut vocab: HashMap<String, u32> = HashMap::new();
+    let mut vocab: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     vocab.insert("[UNK]".to_string(), 0);
     vocab.insert("hello".to_string(), 1);
     vocab.insert("world".to_string(), 2);
@@ -29,12 +28,12 @@ fn make_test_tokenizer() -> (LuminaTokenizer, tempfile::TempPath) {
     }
 
     let model = tokenizers::models::wordlevel::WordLevel::builder()
-        .vocab(vocab)
+        .vocab(vocab.into_iter().collect())
         .unk_token("[UNK]".to_string())
         .build()
         .unwrap();
     let mut tokenizer = tokenizers::Tokenizer::new(model);
-    tokenizer.with_pre_tokenizer(tokenizers::pre_tokenizers::whitespace::Whitespace::default());
+    tokenizer.with_pre_tokenizer(Some(tokenizers::pre_tokenizers::whitespace::Whitespace::default()));
     let path = tempfile::NamedTempFile::new().unwrap();
     tokenizer.save(path.path(), false).unwrap();
     let tok = LuminaTokenizer::from_file(path.path()).unwrap();
