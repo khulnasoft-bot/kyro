@@ -302,7 +302,7 @@ pub async fn chat_completions(
                         let delta = if text.starts_with(&prev_text) {
                             text[prev_text.len()..].to_string()
                         } else {
-                            text.clone()
+                            String::new()
                         };
                         prev_text = text;
                         delta
