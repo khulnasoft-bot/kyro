@@ -27,7 +27,7 @@
 | Tier 2 #7 — Observability | 🔶 Partial | Grafana dashboard (`deploy/grafana-dashboard.json`) + SLO/alerting guide (`docs/slos.md`) added; no OTLP/tracing export yet |
 | Tier 3 #8 — Error Handling & Resilience | ✅ Done | Circuit breaker (10 consecutive errors → worker stops, `/ready` flips to 503, `kyro_worker_circuit_breaker_tripped` metric), transient-error retry with backoff, readiness probe, graceful SIGINT shutdown, request timeout |
 | Tier 3 #9 — Deployment Guide | 🔶 Partial | `docs/troubleshooting.md` + SLO guide added; Docker/K8s manifests already existed |
-| Tier 3 #10 — API Compatibility | 🔶 Partial | Request cancellation (`POST /v1/cancel` + `X-Request-Id` header) added; no tools/functions or priority queues yet |
+| Tier 3 #10 — API Compatibility | 🔶 Partial | Request cancellation (`POST /v1/cancel` + `X-Request-Id` header), priority queuing (`priority` 0–100), request timeout added; no tools/functions support yet |
 
 **Coverage:** 52.77% → **70.40%** (plan target was >70% for critical modules; scheduler modules are >94%).
 
@@ -347,7 +347,7 @@
 - **Effort:** 2–3 weeks
 - **Tasks:**
    - Add support for `functions` / `tools` parameters.
-   - Add request queuing with priority/SLA hints.
+   - Add request queuing with priority/SLA hints. — **DONE**: `priority` field (0–100) on `/v1/chat/completions`; scheduler dequeues highest-priority first, FIFO within equal priority.
    - Add request cancellation (cancel by ID). — **DONE**: `POST /v1/cancel` + `X-Request-Id` response header.
    - Add timeout handling. — **DONE**: `KYRO_REQUEST_TIMEOUT_SECS` → 504 on expiry.
 

@@ -397,6 +397,53 @@ async fn test_concurrent_requests() {
 }
 
 #[tokio::test]
+async fn test_priority_validation_rejected() {
+    let (state, _tmp) = setup_engine();
+    let app = openai::app(state);
+    let body = serde_json::json!({
+        "model": "kyro",
+        "priority": 101,
+        "messages": [{"role": "user", "content": "hello"}]
+    });
+    let response = tower::ServiceExt::oneshot(
+        app,
+        axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), 400);
+}
+
+#[tokio::test]
+async fn test_priority_accepted() {
+    let (state, _tmp) = setup_engine();
+    let app = openai::app(state);
+    let body = serde_json::json!({
+        "model": "kyro",
+        "priority": 50,
+        "max_tokens": 4,
+        "messages": [{"role": "user", "content": "hello world"}]
+    });
+    let response = tower::ServiceExt::oneshot(
+        app,
+        axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), 200);
+}
+
+#[tokio::test]
 async fn test_cancel_unknown_request() {
     let (state, _tmp) = setup_engine();
     let app = openai::app(state);

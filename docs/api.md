@@ -23,6 +23,9 @@ Request:
 - `max_tokens` must be within `1..=KYRO_MAX_TOKENS_CAP`; `temperature` in
   `[0,2]`; `top_p` in `(0,1]`; message count ≤ `KYRO_MAX_MESSAGES`; prompt
   size ≤ `KYRO_MAX_PROMPT_BYTES`.
+- Optional `priority` (0–100, default 0): higher-priority requests are
+  dequeued by the scheduler before lower-priority ones; FIFO within equal
+  priority.
 - Non-streaming requests are bounded by `KYRO_REQUEST_TIMEOUT_SECS`
   (default 600); exceeding it returns `504` with an
   `{"error": {"message", "type"}}` body.

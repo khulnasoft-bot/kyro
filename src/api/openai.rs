@@ -98,6 +98,7 @@ pub struct ChatCompletionRequest {
     pub prompt: Option<String>,
     pub max_tokens: Option<usize>,
     pub response_format: Option<ResponseFormat>,
+    pub priority: Option<u32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -237,6 +238,11 @@ pub async fn chat_completions(
             return ApiError::bad_request("top_p must be in (0, 1]").into_response();
         }
     }
+    if let Some(pr) = payload.priority {
+        if pr > 100 {
+            return ApiError::bad_request("priority must be in 0..=100").into_response();
+        }
+    }
     if let Some(metrics) = &state.metrics {
         metrics
             .requests_by_model
@@ -292,6 +298,7 @@ pub async fn chat_completions(
         prefill_cursor: 0,
         temperature: payload.temperature.unwrap_or(1.0),
         top_p: payload.top_p.unwrap_or(1.0),
+        priority: payload.priority.unwrap_or(0),
         token_sender: Some(tx),
         grammar_processor: match &payload.response_format {
             Some(rf) if rf.format_type == "json_object" => {
