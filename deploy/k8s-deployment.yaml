@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kyro
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: kyro}
+  template:
+    metadata:
+      labels: {app: kyro}
+    spec:
+      containers:
+      - name: kyro
+        image: kyro:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: KYRO_MODEL_PATH
+          value: /models/llama3
+        - name: KYRO_TOKENIZER_PATH
+          value: /models/llama3/tokenizer.json
+        - name: KYRO_MODEL_NAME
+          value: llama3
+        volumeMounts:
+        - name: models
+          mountPath: /models
+          readOnly: true
+        resources:
+          limits:
+            nvidia.com/gpu: "1"
+        livenessProbe:
+          httpGet: {path: /health, port: 3000}
+          initialDelaySeconds: 10
+        readinessProbe:
+          httpGet: {path: /health, port: 3000}
+          initialDelaySeconds: 5
+      volumes:
+      - name: models
+        hostPath: {path: /var/kyro/models}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kyro
+spec:
+  selector: {app: kyro}
+  ports:
+  - port: 3000
+    targetPort: 3000

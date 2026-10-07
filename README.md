@@ -83,4 +83,4 @@ python benchmarks/stress_test.py
 - **GET** `/health`: Liveness and readiness probe.
 - **GET** `/metrics`: Prometheus-formatted engine metrics.
 
-Operational limits, chunking, quantization paths, and distributed-test notes are documented in [docs/limits.md](docs/limits.md) and [docs/architecture.md](docs/architecture.md).
+Operational limits, chunking, quantization paths, and distributed-test notes are documented in [docs/limits.md](docs/limits.md) and [docs/architecture.md](docs/architecture.md). Full request/response shapes and error cases are in [docs/api.md](docs/api.md); deployment, Docker/Compose/Kubernetes, and security guidance in [docs/deployment.md](docs/deployment.md).

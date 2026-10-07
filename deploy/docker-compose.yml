@@ -1,0 +1,20 @@
+services:
+  kyro:
+    build: .
+    image: kyro:latest
+    ports:
+      - "3000:3000"
+    environment:
+      KYRO_MODEL_PATH: /models/llama3
+      KYRO_TOKENIZER_PATH: /models/llama3/tokenizer.json
+      KYRO_MODEL_NAME: llama3
+      RUST_LOG: info
+    volumes:
+      - ./models:/models:ro
+    restart: unless-stopped
+    # Uncomment for GPU deployments:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - capabilities: [gpu]
