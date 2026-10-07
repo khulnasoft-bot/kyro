@@ -341,4 +341,3 @@ Kyro is a well-architected, early-stage LLM serving engine with a solid core run
 - Detailed issue backlog: `docs/ISSUES_BACKLOG.md`
 - Original gap analysis: `IMPROVEMENT_PLAN.md` (historical reference)
 - Implementation status: `docs/implementation_status.md`
-

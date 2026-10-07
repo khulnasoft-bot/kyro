@@ -72,6 +72,22 @@ groups:
           severity: critical
         annotations:
           summary: "Kyro worker appears stalled (no tokens generated)"
+
+      - alert: KyroWorkerCircuitBreakerTripped
+        expr: kyro_worker_circuit_breaker_tripped == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kyro worker circuit breaker tripped; engine is not ready"
+
+      - alert: KyroWorkerErrorBurst
+        expr: rate(kyro_worker_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kyro worker logging repeated iteration errors"
 ```
 
 ## Grafana Dashboard
