@@ -23,6 +23,11 @@ Request:
 - `max_tokens` must be within `1..=KYRO_MAX_TOKENS_CAP`; `temperature` in
   `[0,2]`; `top_p` in `(0,1]`; message count ≤ `KYRO_MAX_MESSAGES`; prompt
   size ≤ `KYRO_MAX_PROMPT_BYTES`.
+- Non-streaming requests are bounded by `KYRO_REQUEST_TIMEOUT_SECS`
+  (default 600); exceeding it returns `504` with an
+  `{"error": {"message", "type"}}` body.
+- Requests received before model loading completes return `503`
+  ("Engine is not ready").
 - `stream: true` returns `text/event-stream` chunks
   (`chat.completion.chunk`), decoded incrementally, then a final chunk with
   `finish_reason: "stop"`.
@@ -38,6 +43,30 @@ Lists the served model in OpenAI list format.
 ## GET /health
 
 `200 OK` plain text.
+
+## GET /ready
+
+Readiness probe: `200` once the model is loaded and the worker loop is
+running, `503` otherwise. Use as a Kubernetes readiness probe instead of
+`/health` to avoid routing traffic to a cold engine.
+
+## POST /v1/cancel
+
+Cancels an in-flight or queued request by ID.
+
+Request:
+
+```json
+{"request_id": 123456}
+```
+
+- The `request_id` is returned in the `X-Request-Id` response header of
+  the original `POST /v1/chat/completions` call (both streaming and
+  non-streaming).
+- `200` if the request was found and cancelled; `400` if no such request
+  exists.
+- Cancelling a running request frees its KV-cache blocks immediately; the
+  client connection is closed by the server.
 
 ## GET /metrics
 

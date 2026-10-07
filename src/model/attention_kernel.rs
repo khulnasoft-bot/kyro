@@ -37,3 +37,21 @@ impl PagedAttention {
         Ok(query.clone())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use candle_core::Device;
+
+    #[test]
+    fn forward_returns_query_shape() {
+        let pa = PagedAttention::new(16, 32, 128);
+        let q = Tensor::zeros((1, 4, 32, 128), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let k = Tensor::zeros((1, 4, 32, 128), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let v = Tensor::zeros((1, 4, 32, 128), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let bt = Tensor::zeros((1, 1), candle_core::DType::U32, &Device::Cpu).unwrap();
+        let cl = Tensor::zeros((1,), candle_core::DType::U32, &Device::Cpu).unwrap();
+        let out = pa.forward(&q, &k, &v, &bt, &cl).unwrap();
+        assert_eq!(out.dims(), q.dims());
+    }
+}

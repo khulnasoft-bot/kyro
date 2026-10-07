@@ -66,20 +66,34 @@ impl BlockManager {
 
         // 3. Check we have enough free GPU blocks for the remainder
         // First try to evict from the radix cache if needed
+        let mut evicted: Vec<(Vec<u32>, Vec<BlockId>)> = Vec::new();
         if self.free_gpu_blocks.len() < new_blocks_needed {
-            let evicted = self.radix_cache.evict_lru();
-            for block in evicted {
-                self.ref_counts[block.0] -= 1;
-                if self.ref_counts[block.0] == 0 {
-                    self.free_gpu_blocks.push(block);
+            evicted = self.radix_cache.evict_lru();
+            for (_tokens, blocks) in &evicted {
+                for block in blocks {
+                    self.ref_counts[block.0] -= 1;
+                    if self.ref_counts[block.0] == 0 {
+                        self.free_gpu_blocks.push(*block);
+                    }
                 }
             }
         }
 
         if self.free_gpu_blocks.len() < new_blocks_needed {
-            // Rollback ref counts on failure
+            // Roll back ref counts on failure
             for block in &cached_blocks {
                 self.ref_counts[block.0] -= 1;
+            }
+            // Restore evicted cache entries so a failed allocation does not
+            // silently drop cached prefixes.
+            for (tokens, blocks) in evicted {
+                for block in &blocks {
+                    self.ref_counts[block.0] += 1;
+                    if let Some(pos) = self.free_gpu_blocks.iter().position(|&b| b == *block) {
+                        self.free_gpu_blocks.remove(pos);
+                    }
+                }
+                self.radix_cache.insert_unchecked(&tokens, &blocks);
             }
             return None; // Out of memory even after eviction
         }
@@ -161,5 +175,56 @@ mod tests {
     fn returns_none_when_out_of_blocks() {
         let mut bm = BlockManager::new(16, 1, 0);
         assert!(bm.allocate(1, 16 * 64).is_none());
+    }
+
+    #[test]
+    fn prefix_cache_hit_on_second_request() {
+        let mut bm = BlockManager::new(4, 32, 0);
+        let prompt = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let (blocks, cached) = bm.allocate_with_prefix(1, &prompt).unwrap();
+        assert_eq!(cached, 0);
+        assert_eq!(blocks.len(), 2);
+        bm.free(1);
+        let (_blocks2, cached2) = bm.allocate_with_prefix(2, &prompt).unwrap();
+        assert!(cached2 > 0, "expected a prefix cache hit, got {}", cached2);
+    }
+
+    #[test]
+    fn failed_allocation_leaves_manager_usable() {
+        let mut bm = BlockManager::new(4, 4, 0);
+        let prompt = vec![1, 2, 3, 4];
+        bm.allocate_with_prefix(1, &prompt).unwrap();
+        bm.free(1);
+        let huge = vec![9u32; 16 * 64];
+        assert!(bm.allocate_with_prefix(3, &huge).is_none());
+        // Manager must still serve a valid allocation afterwards.
+        assert!(bm.allocate_with_prefix(2, &prompt[..4]).is_some());
+    }
+
+    #[test]
+    fn failed_allocation_preserves_cache_and_refcounts() {
+        let mut bm = BlockManager::new(4, 4, 0);
+        let prompt = vec![1, 2, 3, 4];
+        bm.allocate_with_prefix(1, &prompt).unwrap();
+        bm.free(1);
+        let cached_before = bm.radix_cache.num_cached_blocks;
+        let refcounts_before: Vec<usize> = bm.ref_counts.clone();
+
+        let huge = vec![9u32; 16 * 64];
+        assert!(bm.allocate_with_prefix(3, &huge).is_none());
+
+        assert_eq!(bm.ref_counts, refcounts_before);
+        assert_eq!(bm.radix_cache.num_cached_blocks, cached_before);
+        assert_eq!(bm.free_gpu_blocks.len(), 3);
+        // Cache still serves the original prefix.
+        let (_, cached) = bm.allocate_with_prefix(2, &prompt).unwrap();
+        assert!(cached > 0);
+    }
+
+    #[test]
+    fn free_unknown_request_is_noop() {
+        let mut bm = BlockManager::new(4, 4, 0);
+        bm.free(999);
+        assert_eq!(bm.free_gpu_blocks.len(), 4);
     }
 }

@@ -48,3 +48,23 @@ impl RotaryEmbedding {
         Ok(x.clone())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use candle_core::Device;
+
+    #[test]
+    fn apply_returns_input_shape() {
+        let rope = RotaryEmbedding::new(128, 2048, &Device::Cpu).unwrap();
+        let x = Tensor::zeros((1, 4, 32, 128), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let out = rope.apply(&x, 0).unwrap();
+        assert_eq!(out.dims(), x.dims());
+    }
+
+    #[test]
+    fn inv_freq_has_correct_length() {
+        let rope = RotaryEmbedding::new(64, 512, &Device::Cpu).unwrap();
+        assert_eq!(rope.inv_freq.dims(), &[32]);
+    }
+}

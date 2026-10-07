@@ -26,3 +26,23 @@ impl QuantizedLlama {
         self.inner.forward(x, index)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn load_gguf_fails_on_nonexistent_file() {
+        let result = QuantizedLlama::load_gguf("/nonexistent/model.gguf", &Device::Cpu);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn load_gguf_fails_on_invalid_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.gguf");
+        std::fs::write(&path, b"not a gguf file").unwrap();
+        let result = QuantizedLlama::load_gguf(&path, &Device::Cpu);
+        assert!(result.is_err());
+    }
+}

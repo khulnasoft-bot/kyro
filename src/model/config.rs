@@ -36,3 +36,31 @@ impl LlamaConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn llama_7b_has_expected_dims() {
+        let cfg = LlamaConfig::llama_7b();
+        assert_eq!(cfg.hidden_size, 4096);
+        assert_eq!(cfg.num_hidden_layers, 32);
+        assert_eq!(cfg.vocab_size, 32000);
+    }
+
+    #[test]
+    fn from_file_parses_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(
+            &path,
+            r#"{"hidden_size":512,"intermediate_size":1024,"num_hidden_layers":4,"num_attention_heads":8,"num_key_value_heads":8,"vocab_size":1000,"rms_norm_eps":1e-5,"rope_theta":500000.0}"#,
+        )
+        .unwrap();
+        let cfg = LlamaConfig::from_file(&path).unwrap();
+        assert_eq!(cfg.hidden_size, 512);
+        assert_eq!(cfg.num_hidden_layers, 4);
+        assert_eq!(cfg.rope_theta, 500000.0);
+    }
+}

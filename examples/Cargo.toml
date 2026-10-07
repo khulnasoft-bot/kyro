@@ -35,3 +35,7 @@ path = "src/kv_demo.rs"
 [[example]]
 name = "small_trainer"
 path = "src/small_trainer.rs"
+
+[[example]]
+name = "gguf_demo"
+path = "src/gguf_demo.rs"

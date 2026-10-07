@@ -41,3 +41,25 @@ impl VisionLanguageProjection {
         self.linear_2.forward(&x)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use candle_core::Device;
+
+    #[test]
+    fn forward_preserves_batch_and_seq() {
+        let l1 = Linear::new(
+            Tensor::ones((8, 4), candle_core::DType::F32, &Device::Cpu).unwrap(),
+            None,
+        );
+        let l2 = Linear::new(
+            Tensor::ones((4, 8), candle_core::DType::F32, &Device::Cpu).unwrap(),
+            None,
+        );
+        let proj = VisionLanguageProjection::new(l1, l2);
+        let x = Tensor::ones((2, 3, 4), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let out = proj.forward(&x).unwrap();
+        assert_eq!(out.dims(), &[2, 3, 4]);
+    }
+}

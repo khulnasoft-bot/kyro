@@ -152,6 +152,24 @@ impl Scheduler {
             self.block_manager.free(request_id);
         }
     }
+
+    /// Cancels a request by ID, whether it is still waiting or already
+    /// running. Returns true if a matching request was found and removed.
+    pub fn cancel_request(&mut self, request_id: u64) -> bool {
+        let mut cancelled = false;
+        if let Some(pos) = self.waiting_queue.iter().position(|r| r.id == request_id) {
+            self.waiting_queue.remove(pos);
+            cancelled = true;
+        }
+        if let Some(pos) = self.running_queue.iter().position(|r| r.id == request_id) {
+            self.running_queue.remove(pos);
+            cancelled = true;
+        }
+        if cancelled {
+            self.block_manager.free(request_id);
+        }
+        cancelled
+    }
 }
 
 #[cfg(test)]
@@ -221,6 +239,33 @@ mod tests {
         assert_eq!(sched.cache_misses, 1);
         assert_eq!(sched.cache_hits, 0);
     }
+
+    #[test]
+    fn cancel_waiting_request() {
+        let bm = BlockManager::new(16, 64, 16);
+        let mut sched = Scheduler::new(bm, SchedulerConfig::default());
+        sched.add_request(make_request(1, vec![1, 2, 3], 4));
+        assert!(sched.cancel_request(1));
+        assert!(sched.waiting_queue.is_empty());
+        assert!(sched.running_queue.is_empty());
+    }
+
+    #[test]
+    fn cancel_running_request() {
+        let bm = BlockManager::new(16, 64, 16);
+        let mut sched = Scheduler::new(bm, SchedulerConfig::default());
+        sched.add_request(make_request(1, vec![1, 2, 3], 4));
+        sched.schedule();
+        assert!(sched.cancel_request(1));
+        assert!(sched.running_queue.is_empty());
+    }
+
+    #[test]
+    fn cancel_unknown_request_is_noop() {
+        let bm = BlockManager::new(16, 64, 16);
+        let mut sched = Scheduler::new(bm, SchedulerConfig::default());
+        assert!(!sched.cancel_request(999));
+    }
 }
 
 #[cfg(test)]
@@ -268,9 +313,7 @@ mod property_tests {
             let mut accounted = 0usize;
             for id in &prefill {
                 let req = sched.running_queue.iter().find(|r| r.id == *id).unwrap();
-                let chunk = (req.prompt_tokens.len() - req.prefill_cursor)
-                    .min(16)
-                    .max(1);
+                let chunk = (req.prompt_tokens.len() - req.prefill_cursor).clamp(1, 16);
                 accounted += chunk;
             }
             accounted += decode.len();

@@ -94,3 +94,53 @@ impl EngineMetrics {
         }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metrics_register_and_update() {
+        let registry = Registry::new();
+        let m = EngineMetrics::new(&registry).unwrap();
+
+        m.total_requests.inc();
+        m.total_tokens_generated.inc_by(5.0);
+        m.queue_depth.set(3.0);
+        m.cache_hits.set(1.0);
+        m.cache_misses.set(2.0);
+        m.kv_cache_usage.set(42.0);
+        m.requests_by_model.with_label_values(&["kyro"]).inc();
+        m.time_to_first_token.observe(12.0);
+        m.time_between_tokens.observe(3.0);
+        m.token_latency.observe(0.5);
+
+        let gathered = registry.gather();
+        let names: Vec<_> = gathered.iter().map(|mf| mf.name().to_string()).collect();
+        for expected in [
+            "kyro_requests_total",
+            "kyro_tokens_total",
+            "kyro_queue_depth",
+            "kyro_prefix_cache_hits_total",
+            "kyro_prefix_cache_misses_total",
+            "kyro_kv_cache_usage_percent",
+            "kyro_requests_by_model_total",
+            "kyro_ttft_ms",
+            "kyro_tbt_ms",
+            "kyro_token_latency_seconds",
+        ] {
+            assert!(
+                names.iter().any(|n| n == expected),
+                "missing metric {}",
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn duplicate_registration_fails() {
+        let registry = Registry::new();
+        let _m = EngineMetrics::new(&registry).unwrap();
+        assert!(EngineMetrics::new(&registry).is_err());
+    }
+}

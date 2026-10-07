@@ -267,3 +267,28 @@ impl LlamaModel {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dummy_model_has_single_rank_pipeline() {
+        let cfg = LlamaConfig::llama_7b();
+        let model = LlamaModel::dummy(&cfg).unwrap();
+        assert_eq!(model.pipeline_ctx.rank, 0);
+        assert_eq!(model.pipeline_ctx.world_size, 1);
+        assert!(model.pipeline_ctx.is_first_stage());
+        assert!(model.pipeline_ctx.is_last_stage());
+        assert!(model.layers.is_empty());
+    }
+
+    #[test]
+    fn dummy_model_forward_returns_input() {
+        let cfg = LlamaConfig::llama_7b();
+        let model = LlamaModel::dummy(&cfg).unwrap();
+        let x = Tensor::ones((1, 2, 4096), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let out = model.forward(&x, 0).unwrap();
+        assert_eq!(out.dims(), x.dims());
+    }
+}

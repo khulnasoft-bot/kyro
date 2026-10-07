@@ -19,35 +19,33 @@
 ### 1.1 **Testing & Validation**
 
 **Current State:**
-- Repository has `tests/` and `benches/` directories (both appear empty or minimal).
-- Benchmark suite referenced (`benchmarks/stress_test.py`) exists but no visible Rust unit/integration tests.
-- CI workflow runs (`cargo fmt`, `cargo clippy`, `cargo audit`, release build) but test coverage is not enforced.
+- `tests/integration.rs` contains 14 integration tests covering end-to-end request flows (non-streaming, SSE streaming, metrics endpoint, validation errors, tokenizer loading).
+- 9 unit tests exist inline in `src/`; `benches/scheduler_bench.rs` provides a scheduler benchmark; `benchmarks/stress_test.py` exists for load testing.
+- CI runs `cargo test` (stable + nightly), llvm-cov coverage, bench smoke test, examples build, notebook execution, and Docker build — but no enforced coverage threshold.
 
 **Gaps:**
-- ❌ No visible unit tests for critical modules (scheduler, block manager, model loader, tokenizer).
-- ❌ No integration tests for end-to-end request flows (prefill → decode → response).
-- ❌ No performance regression tests or SLO validation.
-- ❌ Stress test tooling exists in Python but may not be comprehensive.
-- ❌ No test coverage metrics or badges in README.
+- ❌ No unit tests for scheduler internals (`continuous_batching.rs`, `block_manager.rs`, `radix_cache.rs`).
+- ❌ No performance regression tests or SLO validation in CI.
+- ❌ No test coverage metrics gate or badge in README (coverage is reported but not threshold-enforced).
+- ⚠️ Stress test tooling exists in Python but has no Rust-side equivalent run in CI.
 
-**Impact:** High risk of silent regressions, especially in scheduler logic and KV cache management.
+**Impact:** Moderate — a test harness exists, but coverage of the most failure-prone modules (scheduler, KV cache) is still missing, leaving silent-regression risk there.
 
 ---
 
 ### 1.2 **Quantization Implementation**
 
-**Current State:**
+**Current State (audited Oct 7, 2026):**
 - README advertises **FP8 (Hopper), AWQ (4-bit), GGUF** support.
-- Code has `src/model/quantization/` directory (structure unknown).
-- Candle framework is used; quantization may be delegated to `candle-transformers`.
+- **GGUF is real**: `QuantizedLlama` (src/model/quantized.rs) loads via `candle_transformers::models::quantized_llama::ModelWeights`; `ModelLoader` auto-detects `.gguf` (src/model/loader.rs:26).
+- **AWQ and FP8 are mocks**: `src/model/quantization/awq.rs` `unpack_weights()` is a no-op cast ("Mock unpacking 4-bit to F16"); `fp8.rs` casts activations to `F8E4M3` without a real kernel. Both are `#![allow(dead_code)]` and never invoked by the loader or forward pass.
 
 **Gaps:**
-- ⚠️ Quantization module structure not explored; unclear if full implementations exist or are stubs.
-- ⚠️ No documentation on how to load/configure quantized models (only dummy model creation shown).
-- ⚠️ No examples demonstrating FP8, AWQ, or GGUF loading.
+- ❌ AWQ and FP8 are simulations, not implementations; README should not advertise them as supported.
+- ⚠️ No examples demonstrating GGUF loading end-to-end (only the loader path exists).
 - ⚠️ No benchmarks comparing throughput/accuracy tradeoffs across quantization types.
 
-**Impact:** Feature appears advertised but may be incomplete; users cannot validate if quantization actually works.
+**Impact:** GGUF users are served; AWQ/FP8 claims are misleading and should be retracted or implemented.
 
 ---
 
@@ -55,8 +53,8 @@
 
 **Current State:**
 - README claims **Tensor Parallelism (TP) and Pipeline Parallelism (PP)** support.
-- Code has `src/distributed.rs` (307 bytes—likely a stub).
-- `DistributedContext::new()` initialized but implementation minimal.
+- Code has `src/distributed.rs` (307 bytes—confirmed stub: `rank`/`world_size` fields only).
+- `DistributedContext::new()` is threaded through `ModelLoader` and `LlamaModel` but always `rank: 0, world_size: 1`.
 - NCCL listed in architecture but not integrated into active code paths.
 
 **Gaps:**
@@ -109,18 +107,17 @@
 
 **Current State:**
 - Prometheus metrics endpoint exists (`GET /metrics`).
-- `EngineMetrics` struct (2925 bytes) tracks basic counters.
-- Architecture mentions TTFT/TBT histograms, KV cache usage, queue depth.
+- `EngineMetrics` (src/metrics.rs) tracks counters plus TTFT and time-between-tokens histograms and KV cache usage gauge, so the core metric set is largely implemented.
+- Architecture mentions queue depth and cache hit/miss gauges, which exist.
 
 **Gaps:**
-- ⚠️ Metrics implementation may be incomplete; full histogram support unclear.
 - ⚠️ No tracing/span integration for distributed tracing (e.g., Jaeger, OTLP).
 - ⚠️ No structured logging for request lifecycle events.
 - ⚠️ No dashboards or Grafana examples provided.
 - ⚠️ No SLO definitions or alerting guidelines.
 - ❌ Error rates and latency percentiles not documented.
 
-**Impact:** Production deployments will struggle to debug performance issues.
+**Impact:** Production deployments will struggle to debug performance issues (partial — core metrics exist, but tracing/alerting are missing).
 
 ---
 
@@ -221,12 +218,11 @@
 - **Effort:** 2–3 weeks
 - **Owner:** QA/Testing Team
 - **Tasks:**
-  - Add unit tests for `scheduler/continuous_batching.rs` (prefill scheduling, token generation).
-  - Add unit tests for `scheduler/block_manager.rs` (block allocation/freeing, fragmentation).
-  - Add unit tests for `scheduler/radix_cache.rs` (prefix matching, eviction).
-  - Add integration tests for full request lifecycle (API → scheduler → worker → response).
-  - Add stress test (multiple concurrent requests, various prompt sizes).
-  - Add coverage reporting (codecov or similar).
+   - Add unit tests for `scheduler/continuous_batching.rs` (prefill scheduling, token generation).
+   - Add unit tests for `scheduler/block_manager.rs` (block allocation/freeing, fragmentation).
+   - Add unit tests for `scheduler/radix_cache.rs` (prefix matching, eviction).
+   - Existing API-level integration tests (streaming, validation, metrics) should be kept; extend with multi-request concurrency and cancellation cases.
+   - Add coverage threshold gate to CI; add badge to README.
   - **Acceptance Criteria:**
     - >70% code coverage for critical modules.
     - All tests pass in CI.
@@ -340,9 +336,8 @@
 ## Section 3: Short-Term Action Items (Next 4 Weeks)
 
 1. **Create GitHub Issues** for each Priority Tier 1 & 2 item (10 issues).
-2. **Establish Test CI Pipeline:**
-   - Add `cargo test` and coverage reporting to CI.
-   - Set minimum coverage threshold (70%).
+2. **Tighten Test CI:**
+   - CI already runs `cargo test` and llvm-cov; add a minimum coverage threshold (70%) and scheduler/block-manager unit tests.
 3. **Audit Quantization & Distributed Code:**
    - Document actual implementation status (complete vs. stub).
    - Create detailed specification for each missing component.

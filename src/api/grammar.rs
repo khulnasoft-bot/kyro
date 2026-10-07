@@ -61,3 +61,37 @@ impl GrammarLogitsProcessor {
         self.state.current_text.push_str(token_text);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use candle_core::Device;
+
+    #[test]
+    fn json_constraint_masks_invalid_tokens() {
+        let mut proc = GrammarLogitsProcessor::new(GrammarConstraint::Json);
+        let logits = Tensor::zeros((16,), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let masked = proc.apply_grammar_mask(&logits, 16).unwrap();
+        let vals: Vec<f32> = masked.to_vec1().unwrap();
+        // Token 0 is valid for JSON; token 1 is not.
+        assert_eq!(vals[0], 0.0);
+        assert_eq!(vals[1], f32::NEG_INFINITY);
+    }
+
+    #[test]
+    fn none_constraint_passes_all_tokens() {
+        let mut proc = GrammarLogitsProcessor::new(GrammarConstraint::None);
+        let logits = Tensor::zeros((8,), candle_core::DType::F32, &Device::Cpu).unwrap();
+        let masked = proc.apply_grammar_mask(&logits, 8).unwrap();
+        let vals: Vec<f32> = masked.to_vec1().unwrap();
+        assert!(vals.iter().all(|&v| v == 0.0));
+    }
+
+    #[test]
+    fn advance_appends_text() {
+        let mut proc = GrammarLogitsProcessor::new(GrammarConstraint::Json);
+        proc.advance("hello");
+        proc.advance(" world");
+        assert_eq!(proc.state.current_text, "hello world");
+    }
+}
