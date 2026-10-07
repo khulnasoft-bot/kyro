@@ -26,7 +26,7 @@
 | Tier 2 #6 — Model Ecosystem | ❌ Open | Only Llama implemented |
 | Tier 2 #7 — Observability | ✅ Done | Grafana dashboard (`deploy/grafana-dashboard.json`), SLO/alerting guide (`docs/slos.md`), optional OTLP tracing export (`otlp` cargo feature, `KYRO_OTLP_ENDPOINT`, `chat_completions` span with model/stream attributes) |
 | Tier 3 #8 — Error Handling & Resilience | ✅ Done | Circuit breaker (10 consecutive errors → worker stops, `/ready` flips to 503, `kyro_worker_circuit_breaker_tripped` metric), transient-error retry with backoff, readiness probe, graceful SIGINT shutdown, request timeout |
-| Tier 3 #9 — Deployment Guide | 🔶 Partial | `docs/troubleshooting.md` + SLO guide added; Docker/K8s manifests already existed |
+| Tier 3 #9 — Deployment Guide | ✅ Done | `docs/troubleshooting.md`, `docs/slos.md`, production checklist + env table in `docs/deployment.md`; Docker/Compose/K8s manifests already existed |
 | Tier 3 #10 — API Compatibility | ✅ Done | Request cancellation (`POST /v1/cancel` + `X-Request-Id` header), priority queuing (`priority` 0–100), request timeout, `tools`/`functions` parameter support |
 
 **Coverage:** 52.77% → **70.40%** (plan target was >70% for critical modules; scheduler modules are >94%).
@@ -382,7 +382,8 @@ By EOQ (end of quarter):
 - ⬜ Distributed inference works on 2+ GPUs (Tier 1 #1) — blocked on multi-GPU hardware.
 - 🔶 Quantization paths fully documented & working (Tier 1 #3) — GGUF done; AWQ/FP8 stubs documented in `docs/implementation_status.md`.
 - 🔶 LoRA and speculative decoding integrated (Tier 2 #4, #5) — unit-tested; integration pending.
-- 🔶 Production deployment guide published (Tier 3 #9) — troubleshooting + SLO/alerting guides added.- ⬜ 3+ model architectures supported (Tier 2 #6).
+- ✅ Production deployment guide published (Tier 3 #9) — troubleshooting, SLO/alerting guides, production checklist.
+- ⬜ 3+ model architectures supported (Tier 2 #6).
 - ✅ Comprehensive monitoring/alerting setup (Tier 2 #7) — Grafana dashboard, SLO rules, optional OTLP tracing.
 
 ---
