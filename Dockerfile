@@ -16,9 +16,10 @@ COPY Cargo.toml Cargo.lock ./
 COPY examples/Cargo.toml examples/Cargo.toml
 
 # Create dummy source to pre-build dependencies (caching)
-RUN mkdir src examples/src && echo "fn main() {}" > src/main.rs \
+RUN mkdir src examples/src benches && echo "fn main() {}" > src/main.rs \
     && for f in pattern_matching tokenization attention embedding kv_demo small_trainer; do \
-         echo "fn main() {}" > examples/src/$f.rs; done
+         echo "fn main() {}" > examples/src/$f.rs; done \
+    && echo "fn main() {}" > benches/scheduler_bench.rs
 RUN cargo build --release
 
 # Copy actual source
