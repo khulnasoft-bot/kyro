@@ -387,10 +387,24 @@ async fn chat_completions_inner(
 
     if payload.stream.unwrap_or(false) {
         let tokenizer = state.tokenizer.clone();
+        let timeout = state.request_timeout;
         let stream = async_stream::stream! {
             let mut ids: Vec<u32> = Vec::new();
             let mut prev_text = String::new();
-            while let Some(token) = rx.recv().await {
+            let deadline = tokio::time::Instant::now() + timeout;
+            loop {
+                let token = match tokio::time::timeout_at(deadline, rx.recv()).await {
+                    Ok(Some(token)) => token,
+                    Ok(None) => break,
+                    Err(_) => {
+                        tracing::warn!(
+                            request_id = request_id,
+                            "stream timed out after {:?}",
+                            timeout
+                        );
+                        break;
+                    }
+                };
                 ids.push(token);
                 let delta = match &tokenizer {
                     Some(tok) => {

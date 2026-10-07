@@ -32,7 +32,9 @@ Request:
   emit tool calls; responses are not auto-executed.
 - Non-streaming requests are bounded by `KYRO_REQUEST_TIMEOUT_SECS`
   (default 600); exceeding it returns `504` with an
-  `{"error": {"message", "type"}}` body.
+  `{"error": {"message", "type"}}` body. Streaming requests are
+  bounded by the same deadline: the SSE stream terminates once
+  it is reached.
 - Requests received before model loading completes return `503`
   ("Engine is not ready").
 - `stream: true` returns `text/event-stream` chunks

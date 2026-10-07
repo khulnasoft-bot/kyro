@@ -350,7 +350,7 @@
    - Add support for `functions` / `tools` parameters. — **DONE**: `tools` field (max 64) on `/v1/chat/completions`; tool schemas are rendered into the prompt so the model can emit tool calls.
    - Add request queuing with priority/SLA hints. — **DONE**: `priority` field (0–100) on `/v1/chat/completions`; scheduler dequeues highest-priority first, FIFO within equal priority.
    - Add request cancellation (cancel by ID). — **DONE**: `POST /v1/cancel` + `X-Request-Id` response header.
-   - Add timeout handling. — **DONE**: `KYRO_REQUEST_TIMEOUT_SECS` → 504 on expiry.
+   - Add timeout handling. — **DONE**: `KYRO_REQUEST_TIMEOUT_SECS` → 504 on expiry for non-streaming; SSE streams terminate at the same deadline.
 
 ---
 

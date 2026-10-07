@@ -506,6 +506,46 @@ async fn test_too_many_tools_rejected() {
 }
 
 #[tokio::test]
+async fn test_streaming_timeout_terminates() {
+    let (state, _tmp) = setup_engine();
+    let state = Arc::new(
+        AppState::new(
+            state.scheduler.clone(),
+            state.notify.clone(),
+            state.tokenizer.clone(),
+            "kyro".to_string(),
+        )
+        .with_readiness(Arc::new(std::sync::atomic::AtomicBool::new(true)))
+        .with_timeout(std::time::Duration::from_millis(10)),
+    );
+    let app = openai::app(state);
+    let body = serde_json::json!({
+        "model": "kyro",
+        "stream": true,
+        "max_tokens": 4096,
+        "messages": [{"role": "user", "content": "hello world"}]
+    });
+    let response = tower::ServiceExt::oneshot(
+        app,
+        axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), 200);
+    // The stream must terminate (not hang) once the deadline passes.
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let text = String::from_utf8(bytes.to_vec()).unwrap();
+    assert!(text.contains("finish_reason"));
+}
+
+#[tokio::test]
 async fn test_cancel_unknown_request() {
     let (state, _tmp) = setup_engine();
     let app = openai::app(state);
