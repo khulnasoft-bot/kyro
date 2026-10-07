@@ -102,7 +102,7 @@ jobs:
           python-version: '3.11'
       - name: Install dependencies
         run: |
-          pip install numpy matplotlib torch tokenizers tqdm aiohttp jupyter
+          pip install numpy matplotlib torch tokenizers tqdm aiohttp jupyter scikit-learn
       - name: Execute all notebooks
         run: |
           pip install -q nbconvert

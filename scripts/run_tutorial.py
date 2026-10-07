@@ -19,9 +19,10 @@ def list_tutorials():
     notebooks = sorted(TUTORIALS_DIR.glob("*.ipynb"))
     for nb in notebooks:
         print(f"  {nb.stem}")
-    md_files = sorted((TUTORIALS_DIR / "docs").glob("*.md")) if (TUTORIALS_DIR / "docs").exists() else []
+    md_files = sorted(TUTORIALS_DIR.glob("*.md"))
     for md in md_files:
-        print(f"  {md.stem}")
+        if md.name != "README.md":
+            print(f"  {md.stem}")
 
 def run_notebook(tutorial_name):
     nb_path = TUTORIALS_DIR / f"{tutorial_name}.ipynb"

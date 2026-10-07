@@ -6,7 +6,7 @@ A staged, interactive learning walkthrough that takes you from simple pattern ma
 
 | Module | Topic | Duration |
 |--------|-------|----------|
-| [00](00_onboarding.md) | Onboarding & Repo Grounding | 1–2 days |
+| [00](../docs/tutorials/00_onboarding.md) | Onboarding & Repo Grounding | 1–2 days |
 | [01](01_pattern_matching.ipynb) | Pattern Matching & N-grams | 1–2 days |
 | [02](02_tokenization.ipynb) | Tokenization (BPE, SentencePiece) | 2–3 days |
 | [03](03_embeddings.ipynb) | Embeddings & Representation Basics | 2 days |
