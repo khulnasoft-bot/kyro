@@ -8,9 +8,28 @@
 
 ## Executive Summary
 
-**Kyro** is a high-throughput LLM serving engine written in Rust (60.3% of codebase) with complementary Jupyter Notebook tutorials (35.8%) and Python tooling (2.9%). The engine implements state-of-the-art inference optimizations: continuous batching, PagedAttention, prefix caching (Radix cache), chunked prefill, speculative decoding, distributed inference, and multi-quantization support.
+**Kyro** is a high-throughput LLM serving engine written in Rust (60.3% of codebase) with complementary Jupyter Notebook tutorials (35.8%) and Python tooling (2.9%). The engine implements state-of-the-art inference optimizations: continuous batching, PagedAttention, prefix caching (Radix cache), and chunked prefill. Speculative decoding, distributed inference, and multi-quantization support are advertised but incomplete (see status tracker below).
 
 **Overall Maturity:** Early production (v0.1.1, created April 2026). The core serving infrastructure is solid, but significant feature, observability, and testing gaps exist.
+
+---
+
+## Implementation Status Tracker (updated October 7, 2026)
+
+| Plan Item | Status | Notes |
+|-----------|--------|-------|
+| Tier 1 #1 — Distributed Inference (TP/PP) | ❌ Open | `src/distributed.rs` still a stub; requires multi-GPU hardware |
+| Tier 1 #2 — Expand Test Suite | ✅ Done | Unit tests for scheduler/block_manager/radix_cache + all model/API modules; 73 tests pass; coverage 70.40% enforced by CI gate (≥70%); concurrency integration test added |
+| Tier 1 #3 — Quantization Paths | 🔶 Partial | GGUF loads real models + new `gguf_demo` example; AWQ/FP8 remain stubs, retracted from README; status audited in `docs/implementation_status.md` |
+| Tier 2 #4 — LoRA Integration | 🔶 Partial | `LoraLinear::forward` now unit-tested; loader, API parameter, and scheduler tracking still missing |
+| Tier 2 #5 — Speculative Decoding | 🔶 Partial | `SpeculativeDecoder::step` now unit-tested; verification loop and worker/API integration still missing |
+| Tier 2 #6 — Model Ecosystem | ❌ Open | Only Llama implemented |
+| Tier 2 #7 — Observability | 🔶 Partial | Grafana dashboard (`deploy/grafana-dashboard.json`) + SLO/alerting guide (`docs/slos.md`) added; no OTLP/tracing export yet |
+| Tier 3 #8 — Error Handling & Resilience | 🔶 Partial | Readiness probe, graceful SIGINT shutdown, request timeout added; no circuit breaker/retry yet |
+| Tier 3 #9 — Deployment Guide | 🔶 Partial | `docs/troubleshooting.md` + SLO guide added; Docker/K8s manifests already existed |
+| Tier 3 #10 — API Compatibility | 🔶 Partial | Request cancellation (`POST /v1/cancel` + `X-Request-Id` header) added; no tools/functions or priority queues yet |
+
+**Coverage:** 52.77% → **70.40%** (plan target was >70% for critical modules; scheduler modules are >94%).
 
 ---
 
@@ -326,24 +345,19 @@
 #### 10. **Enhanced API Compatibility**
 - **Effort:** 2–3 weeks
 - **Tasks:**
-  - Add support for `functions` / `tools` parameters.
-  - Add request queuing with priority/SLA hints.
-  - Add request cancellation (cancel by ID).
-  - Add timeout handling.
+   - Add support for `functions` / `tools` parameters.
+   - Add request queuing with priority/SLA hints.
+   - Add request cancellation (cancel by ID). — **DONE**: `POST /v1/cancel` + `X-Request-Id` response header.
+   - Add timeout handling. — **DONE**: `KYRO_REQUEST_TIMEOUT_SECS` → 504 on expiry.
 
 ---
 
 ## Section 3: Short-Term Action Items (Next 4 Weeks)
 
 1. **Create GitHub Issues** for each Priority Tier 1 & 2 item (10 issues).
-2. **Tighten Test CI:**
-   - CI already runs `cargo test` and llvm-cov; add a minimum coverage threshold (70%) and scheduler/block-manager unit tests.
-3. **Audit Quantization & Distributed Code:**
-   - Document actual implementation status (complete vs. stub).
-   - Create detailed specification for each missing component.
-4. **Kick Off Parallel Efforts:**
-   - Testing: Begin Tier 1 item #2 (test suite).
-   - Documentation: Begin Tier 3 item #9 (deployment guide).
+2. **Tighten Test CI:** — **DONE**: CI enforces `--fail-under-lines 70` (measured 70.40%); scheduler/block-manager unit tests in place.
+3. **Audit Quantization & Distributed Code:** — **DONE**: `docs/implementation_status.md` documents complete vs. stub per feature; README claims retracted accordingly.
+4. **Kick Off Parallel Efforts:** — testing (Tier 1 #2) and documentation (Tier 3 #9) tracks completed this session.
 
 ---
 
@@ -362,13 +376,13 @@
 ## Section 5: Success Metrics
 
 By EOQ (end of quarter):
-- ✅ Test coverage >70% (Tier 1 #2).
-- ✅ Distributed inference works on 2+ GPUs (Tier 1 #1).
-- ✅ Quantization paths fully documented & working (Tier 1 #3).
-- ✅ LoRA and speculative decoding integrated (Tier 2 #4, #5).
-- ✅ Production deployment guide published (Tier 3 #9).
-- ✅ 3+ model architectures supported (Tier 2 #6).
-- ✅ Comprehensive monitoring/alerting setup (Tier 2 #7).
+- ✅ Test coverage >70% (Tier 1 #2) — **achieved 70.40%, CI-gated**.
+- ⬜ Distributed inference works on 2+ GPUs (Tier 1 #1) — blocked on multi-GPU hardware.
+- 🔶 Quantization paths fully documented & working (Tier 1 #3) — GGUF done; AWQ/FP8 stubs documented in `docs/implementation_status.md`.
+- 🔶 LoRA and speculative decoding integrated (Tier 2 #4, #5) — unit-tested; integration pending.
+- 🔶 Production deployment guide published (Tier 3 #9) — troubleshooting + SLO/alerting guides added.
+- ⬜ 3+ model architectures supported (Tier 2 #6).
+- 🔶 Comprehensive monitoring/alerting setup (Tier 2 #7) — Grafana dashboard + SLO rules added; OTLP pending.
 
 ---
 
@@ -386,14 +400,14 @@ Week 13+:   Polish, optimization, and community feedback.
 
 ## Conclusion
 
-**Kyro is a well-architected early-stage LLM serving engine with significant potential.** The core serving infrastructure (continuous batching, prefix caching, chunked prefill) is solid and production-ready for single-GPU Llama deployments. However, **advertised features (distributed inference, LoRA, speculative decoding, quantization) are incomplete or missing**, and **testing is insufficient** for production confidence.
+**Kyro is a well-architected early-stage LLM serving engine with significant potential.** The core serving infrastructure (continuous batching, prefix caching, chunked prefill) is solid and production-ready for single-GPU Llama deployments. Testing gaps are now closed (70.40% coverage, CI-gated); **advertised features (distributed inference, LoRA, speculative decoding, AWQ/FP8 quantization) remain incomplete or missing** and have been re-labeled in the README to match reality.
 
 **Immediate priorities** are:
-1. Close testing gaps (unit + integration).
+1. ~~Close testing gaps (unit + integration).~~ ✅ Done — 73 tests, 70.40% coverage, CI gate at 70%.
 2. Complete distributed inference (TP/PP).
-3. Validate & document quantization.
+3. Validate & document quantization. — GGUF done; AWQ/FP8 audit documented.
 4. Integrate LoRA and speculative decoding.
 5. Expand model support.
 
-**Success will require 12–16 weeks of focused engineering effort** across testing, distributed systems, model optimization, and DevOps. The team should adopt semantic versioning and maintain a public roadmap to manage user expectations around feature completeness.
+**Success will require 12–16 weeks of focused engineering effort** across distributed systems, model optimization, and DevOps. The team should adopt semantic versioning and maintain a public roadmap to manage user expectations around feature completeness.
 
