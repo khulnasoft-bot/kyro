@@ -28,10 +28,12 @@ impl AppConfig {
         let host = arg_value("--host")
             .or_else(|| std::env::var("KYRO_HOST").ok())
             .unwrap_or_else(|| "0.0.0.0".to_string());
-        let port = arg_value("--port")
-            .or_else(|| std::env::var("KYRO_PORT").ok())
-            .and_then(|p| p.parse::<u16>().ok())
-            .unwrap_or(3000);
+        let port = match arg_value("--port").or_else(|| std::env::var("KYRO_PORT").ok()) {
+            Some(p) => p
+                .parse::<u16>()
+                .map_err(|_| anyhow::anyhow!("invalid port value: {:?}", p))?,
+            None => 3000,
+        };
 
         let cfg = Self {
             model_path,
@@ -39,18 +41,9 @@ impl AppConfig {
             model_name,
             host,
             port,
-            max_tokens_cap: std::env::var("KYRO_MAX_TOKENS_CAP")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(4096),
-            max_prompt_bytes: std::env::var("KYRO_MAX_PROMPT_BYTES")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(64 * 1024),
-            max_messages: std::env::var("KYRO_MAX_MESSAGES")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(256),
+            max_tokens_cap: parse_env_usize("KYRO_MAX_TOKENS_CAP", 4096)?,
+            max_prompt_bytes: parse_env_usize("KYRO_MAX_PROMPT_BYTES", 64 * 1024)?,
+            max_messages: parse_env_usize("KYRO_MAX_MESSAGES", 256)?,
         };
         cfg.validate()?;
         Ok(cfg)
@@ -80,6 +73,15 @@ impl AppConfig {
             }
         }
         Ok(())
+    }
+}
+
+fn parse_env_usize(name: &str, default: usize) -> Result<usize> {
+    match std::env::var(name) {
+        Ok(v) => v
+            .parse::<usize>()
+            .map_err(|_| anyhow::anyhow!("invalid {} value: {:?}", name, v)),
+        Err(_) => Ok(default),
     }
 }
 
