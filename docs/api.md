@@ -47,8 +47,10 @@ Lists the served model in OpenAI list format.
 ## GET /ready
 
 Readiness probe: `200` once the model is loaded and the worker loop is
-running, `503` otherwise. Use as a Kubernetes readiness probe instead of
-`/health` to avoid routing traffic to a cold engine.
+running, `503` otherwise. The flag also flips to `503` if the worker
+circuit breaker trips (10 consecutive iteration failures). Use as a
+Kubernetes readiness probe instead of `/health` to avoid routing
+traffic to a cold or failed engine.
 
 ## POST /v1/cancel
 

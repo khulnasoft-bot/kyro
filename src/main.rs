@@ -78,7 +78,10 @@ async fn main() -> Result<()> {
     };
 
     // 5. Start Worker Loop
-    let mut worker = Worker::new(loaded_model, scheduler.clone(), device, metrics.clone());
+    let ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    ready.store(true, std::sync::atomic::Ordering::SeqCst);
+    let mut worker = Worker::new(loaded_model, scheduler.clone(), device, metrics.clone())
+        .with_ready(ready.clone());
     let worker_notify = notify.clone();
     tokio::spawn(async move {
         if let Err(e) = worker.run_loop(worker_notify).await {
@@ -88,8 +91,6 @@ async fn main() -> Result<()> {
 
     // 6. Start API Server
     let registry_arc = registry.clone();
-    let ready = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    ready.store(true, std::sync::atomic::Ordering::SeqCst);
     let app_state = Arc::new(
         kyro::api::openai::AppState::new(scheduler, notify, tokenizer, config.model_name.clone())
             .with_metrics(metrics.clone(), registry_arc.clone())

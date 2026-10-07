@@ -53,7 +53,9 @@ fn setup_engine() -> (Arc<AppState>, tempfile::TempPath) {
     let metrics = EngineMetrics::new(&registry).unwrap();
     let cfg = LlamaConfig::llama_7b();
     let model = LoadedModel::Standard(LlamaModel::dummy(&cfg).unwrap());
-    let mut worker = Worker::new(model, scheduler.clone(), candle_core::Device::Cpu, metrics);
+    let ready = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let mut worker = Worker::new(model, scheduler.clone(), candle_core::Device::Cpu, metrics)
+        .with_ready(ready.clone());
     let worker_notify = notify.clone();
     tokio::spawn(async move {
         let _ = worker.run_loop(worker_notify).await;
@@ -66,7 +68,7 @@ fn setup_engine() -> (Arc<AppState>, tempfile::TempPath) {
             Some(Arc::new(tokenizer)),
             "kyro".to_string(),
         )
-        .with_readiness(Arc::new(std::sync::atomic::AtomicBool::new(true))),
+        .with_readiness(ready),
     );
     (state, tmp)
 }
