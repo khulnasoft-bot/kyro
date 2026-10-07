@@ -41,7 +41,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Run as an unprivileged user with no shell for minimal privilege
-RUN useradd --system --no-create-home --shell /usr/sbin/nologin kyro
+RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin kyro
 USER kyro
 
 # Copy binary from builder
