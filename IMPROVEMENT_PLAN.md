@@ -312,7 +312,7 @@
 - **Owner:** DevOps/Observability Team
 - **Status:** ✅ Done (Oct 7, 2026)
 - **Tasks:**
-  - Complete Prometheus metrics (histograms for TTFT/TBT, gauge for KV cache). — **DONE** (plus worker error counters and circuit-breaker gauge).
+  - Complete Prometheus metrics (histograms for TTFT/TBT, gauge for KV cache). — **DONE** (plus worker error counters, circuit-breaker gauge; KV-cache gauge now populated per worker iteration and on `/metrics` scrape).
   - Add structured logging with `tracing::span!` for request lifecycle. — **DONE**: `chat_completions` span with `model`/`stream` attributes.
   - Add optional OpenTelemetry exporter (OTLP). — **DONE**: `otlp` cargo feature; `KYRO_OTLP_ENDPOINT`/`--otlp-endpoint`; gRPC export via tonic; flushes on graceful shutdown.
   - Provide Grafana dashboard JSON example. — **DONE**: `deploy/grafana-dashboard.json`.

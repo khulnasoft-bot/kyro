@@ -524,6 +524,7 @@ pub async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRes
                 metrics
                     .queue_depth
                     .set((sched.waiting_queue.len() + sched.running_queue.len()) as f64);
+                metrics.kv_cache_usage.set(sched.kv_cache_usage_percent());
                 drop(sched);
             }
             use prometheus::Encoder;

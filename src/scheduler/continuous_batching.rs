@@ -179,6 +179,11 @@ impl Scheduler {
         }
         cancelled
     }
+
+    /// GPU KV-cache utilization in percent (0..=100).
+    pub fn kv_cache_usage_percent(&self) -> f64 {
+        self.block_manager.kv_cache_usage_percent()
+    }
 }
 
 #[cfg(test)]
