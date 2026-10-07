@@ -78,6 +78,9 @@ python benchmarks/stress_test.py
 
 ## API Documentation
 
-- **POST** `/v1/chat/completions`: OpenAI-compatible completions endpoint.
+- **POST** `/v1/chat/completions`: OpenAI-compatible completions endpoint. Supports `messages`, `prompt`, streaming SSE, and `response_format: {"type": "json_object"}` for grammar-masked decoding.
+- **GET** `/v1/models`: Lists the served model.
 - **GET** `/health`: Liveness and readiness probe.
 - **GET** `/metrics`: Prometheus-formatted engine metrics.
+
+Operational limits, chunking, quantization paths, and distributed-test notes are documented in [docs/limits.md](docs/limits.md) and [docs/architecture.md](docs/architecture.md).

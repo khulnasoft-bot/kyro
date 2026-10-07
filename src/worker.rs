@@ -63,6 +63,10 @@ impl Worker {
                                 temperature: req.temperature,
                                 top_p: req.top_p,
                                 is_prefill: true,
+                                grammar: req
+                                    .grammar_processor
+                                    .as_ref()
+                                    .map(|g| g.constraint.clone()),
                             });
                         } else if req.cached_prefix_len == req.prompt_tokens.len() {
                             let last_token: u32 = req.prompt_tokens.last().copied().unwrap_or(0);
@@ -73,6 +77,10 @@ impl Worker {
                                 temperature: req.temperature,
                                 top_p: req.top_p,
                                 is_prefill: true,
+                                grammar: req
+                                    .grammar_processor
+                                    .as_ref()
+                                    .map(|g| g.constraint.clone()),
                             });
                         }
                     }
@@ -88,6 +96,7 @@ impl Worker {
                             temperature: req.temperature,
                             top_p: req.top_p,
                             is_prefill: false,
+                            grammar: req.grammar_processor.as_ref().map(|g| g.constraint.clone()),
                         });
                     }
                 }
@@ -108,7 +117,20 @@ impl Worker {
                 };
 
                 let next_token = if !logits.dims().is_empty() && logits.dims()[0] > 0 {
-                    self.sample_last_position(&logits, item.temperature, item.top_p)?
+                    let logits = match &item.grammar {
+                        Some(crate::api::grammar::GrammarConstraint::Json) => {
+                            let mut proc = crate::api::grammar::GrammarLogitsProcessor::new(
+                                item.grammar.clone().unwrap(),
+                            );
+                            let vocab = logits.dims().last().copied().unwrap_or(0);
+                            match proc.apply_grammar_mask(&last_pos(&logits)?, vocab) {
+                                Ok(masked) => masked,
+                                Err(_) => return Err(anyhow::anyhow!("grammar mask failed")),
+                            }
+                        }
+                        _ => last_pos(&logits)?,
+                    };
+                    self.sample(&logits, item.temperature, item.top_p)?
                 } else {
                     rand::rng().random_range(0..100)
                 };
@@ -255,6 +277,18 @@ struct WorkItem {
     temperature: f32,
     top_p: f32,
     is_prefill: bool,
+    grammar: Option<crate::api::grammar::GrammarConstraint>,
+}
+
+fn last_pos(logits: &Tensor) -> Result<Tensor> {
+    match logits.dims().len() {
+        1 => Ok(logits.clone()),
+        2 => logits.get(logits.dims()[0] - 1),
+        _ => {
+            let seq = logits.dims()[1];
+            logits.get(0)?.get(seq - 1)
+        }
+    }
 }
 
 struct ComputeResult {

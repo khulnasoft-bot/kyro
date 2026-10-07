@@ -237,3 +237,48 @@ async fn test_invalid_temperature_rejected() {
     .unwrap();
     assert_eq!(response.status(), 400);
 }
+
+#[tokio::test]
+async fn test_json_response_format_accepted() {
+    let (state, _tmp) = setup_engine();
+    let app = openai::app(state);
+    let body = serde_json::json!({
+        "model": "kyro",
+        "max_tokens": 2,
+        "response_format": {"type": "json_object"},
+        "messages": [{"role": "user", "content": "hello world"}]
+    });
+    let response = tower::ServiceExt::oneshot(
+        app,
+        axum::http::Request::builder()
+            .method("POST")
+            .uri("/v1/chat/completions")
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from(body.to_string()))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), 200);
+}
+
+#[tokio::test]
+async fn test_models_endpoint() {
+    let (state, _tmp) = setup_engine();
+    let app = openai::app(state);
+    let response = tower::ServiceExt::oneshot(
+        app,
+        axum::http::Request::builder()
+            .uri("/v1/models")
+            .body(axum::body::Body::empty())
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.status(), 200);
+    let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(json["data"][0]["id"], "kyro");
+}

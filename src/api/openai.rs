@@ -83,6 +83,13 @@ pub struct ChatCompletionRequest {
     pub messages: Option<Vec<Message>>,
     pub prompt: Option<String>,
     pub max_tokens: Option<usize>,
+    pub response_format: Option<ResponseFormat>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ResponseFormat {
+    #[serde(rename = "type")]
+    pub format_type: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -258,7 +265,14 @@ pub async fn chat_completions(
         temperature: payload.temperature.unwrap_or(1.0),
         top_p: payload.top_p.unwrap_or(1.0),
         token_sender: Some(tx),
-        grammar_processor: None,
+        grammar_processor: match &payload.response_format {
+            Some(rf) if rf.format_type == "json_object" => {
+                Some(crate::api::grammar::GrammarLogitsProcessor::new(
+                    crate::api::grammar::GrammarConstraint::Json,
+                ))
+            }
+            _ => None,
+        },
     };
 
     // Add request to scheduler
@@ -393,10 +407,23 @@ pub async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRes
     }
 }
 
+pub async fn list_models(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    Json(serde_json::json!({
+        "object": "list",
+        "data": [{
+            "id": state.model_name,
+            "object": "model",
+            "created": 1677652288u64,
+            "owned_by": "kyro",
+        }]
+    }))
+}
+
 pub fn app(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/v1/chat/completions", post(chat_completions))
         .route("/health", get(|| async { "OK" }))
+        .route("/v1/models", get(list_models))
         .route("/metrics", get(metrics_handler))
         .with_state(state)
 }
