@@ -13,9 +13,13 @@ WORKDIR /usr/src/kyro
 
 # Copy manifests
 COPY Cargo.toml Cargo.lock ./
+COPY examples/Cargo.toml examples/Cargo.toml
 
 # Create dummy source to pre-build dependencies (caching)
-RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN mkdir src examples/src benches && echo "fn main() {}" > src/main.rs \
+    && for f in pattern_matching tokenization attention embedding kv_demo small_trainer; do \
+         echo "fn main() {}" > examples/src/$f.rs; done \
+    && echo "fn main() {}" > benches/scheduler_bench.rs
 RUN cargo build --release
 
 # Copy actual source
@@ -31,9 +35,14 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libssl3 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
+
+# Run as an unprivileged user with no shell for minimal privilege
+RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin kyro
+USER kyro
 
 # Copy binary from builder
 COPY --from=builder /usr/src/kyro/target/release/kyro /usr/local/bin/kyro

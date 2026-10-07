@@ -28,7 +28,10 @@ fn main() -> candle_core::Result<()> {
     let e1_norm = e1.norm()?;
     let dot = e0.matmul(&e1.t()?)?;
     let sim = (&dot / (e0_norm * e1_norm))?.to_dtype(candle_core::DType::F32)?;
-    println!("Cosine similarity between token 0 and 1: {:.4}", sim.to_scalar::<f32>()?);
+    println!(
+        "Cosine similarity between token 0 and 1: {:.4}",
+        sim.to_scalar::<f32>()?
+    );
 
     // Nearest neighbor
     println!("\n=== Nearest Neighbor Retrieval ===");
@@ -47,7 +50,10 @@ fn main() -> candle_core::Result<()> {
             best_token = i as u32;
         }
     }
-    println!("Nearest neighbor to token 0: token {} (sim={:.4})", best_token, best_sim);
+    println!(
+        "Nearest neighbor to token 0: token {} (sim={:.4})",
+        best_token, best_sim
+    );
     println!("(Self-similarity should be ~1.0)");
 
     println!("\nEmbedding demo complete!");

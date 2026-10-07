@@ -3,7 +3,7 @@
 use candle_core::{Result, Tensor};
 use std::collections::HashSet;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 #[allow(dead_code)]
 pub enum GrammarConstraint {
     #[default]
@@ -37,9 +37,12 @@ impl GrammarLogitsProcessor {
         let valid_tokens = self.get_valid_tokens(vocab_size);
         let mut mask_data = vec![f32::NEG_INFINITY; vocab_size];
         for &token_id in &valid_tokens {
-            mask_data[token_id] = 0.0;
+            if token_id < vocab_size {
+                mask_data[token_id] = 0.0;
+            }
         }
-        let mask = Tensor::from_slice(&mask_data, (vocab_size,), logits.device())?;
+        let mask = Tensor::from_slice(&mask_data, (vocab_size,), logits.device())?
+            .to_dtype(logits.dtype())?;
         logits.broadcast_add(&mask)
     }
 

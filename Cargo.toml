@@ -21,8 +21,8 @@ anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rand = "0.9"
-prometheus = "0.13"
-tokenizers = "0.13"
+prometheus = "0.14"
+tokenizers = "0.22"
 futures = "0.3"
 async-stream = "0.3"
 cudarc = { version = "0.9", optional = true }
@@ -40,3 +40,15 @@ strip = true
 
 [dev-dependencies]
 criterion = "0.5"
+tower = { version = "0.5", features = ["util"] }
+tempfile = "3"
+tokenizers = "0.22"
+candle-core = "0.10.2"
+prometheus = "0.14"
+serde_json = "1.0"
+axum = "0.7"
+tokio = { version = "1.35", features = ["full"] }
+anyhow = "1.0"
+[[bench]]
+name = "scheduler_bench"
+harness = false

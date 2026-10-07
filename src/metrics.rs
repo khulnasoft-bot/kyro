@@ -6,6 +6,10 @@ use std::sync::Arc;
 
 pub struct EngineMetrics {
     pub total_requests: Counter,
+    pub requests_by_model: prometheus::CounterVec,
+    pub queue_depth: Gauge,
+    pub cache_hits: Gauge,
+    pub cache_misses: Gauge,
     pub total_tokens_generated: Counter,
     pub token_latency: Histogram,
     pub time_to_first_token: Histogram,
@@ -51,8 +55,37 @@ impl EngineMetrics {
             registry
         )?;
 
+        let requests_by_model = prometheus::register_counter_vec_with_registry!(
+            "kyro_requests_by_model_total",
+            "Total requests, labeled by served model name",
+            &["model"],
+            registry
+        )?;
+
+        let queue_depth = prometheus::register_gauge_with_registry!(
+            "kyro_queue_depth",
+            "Number of requests waiting or running in the scheduler",
+            registry
+        )?;
+
+        let cache_hits = prometheus::register_gauge_with_registry!(
+            "kyro_prefix_cache_hits_total",
+            "Number of requests that reused a cached prefix",
+            registry
+        )?;
+
+        let cache_misses = prometheus::register_gauge_with_registry!(
+            "kyro_prefix_cache_misses_total",
+            "Number of requests that required a cold prefill",
+            registry
+        )?;
+
         Ok(Arc::new(Self {
             total_requests,
+            requests_by_model,
+            queue_depth,
+            cache_hits,
+            cache_misses,
             total_tokens_generated,
             token_latency,
             time_to_first_token,

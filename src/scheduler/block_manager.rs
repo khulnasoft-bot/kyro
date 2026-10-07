@@ -142,3 +142,24 @@ impl BlockManager {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn allocate_and_free() {
+        let mut bm = BlockManager::new(16, 8, 4);
+        let blocks = bm.allocate(1, 32).expect("should allocate");
+        assert_eq!(blocks.len(), 2);
+        bm.free(1);
+        let blocks2 = bm.allocate(2, 128).expect("should reuse freed blocks");
+        assert!(blocks2.len() >= 8);
+    }
+
+    #[test]
+    fn returns_none_when_out_of_blocks() {
+        let mut bm = BlockManager::new(16, 1, 0);
+        assert!(bm.allocate(1, 16 * 64).is_none());
+    }
+}

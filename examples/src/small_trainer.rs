@@ -2,7 +2,7 @@
 //! Shows how a trained model maps to Kyro's LlamaModel loader.
 
 use candle_core::{Device, Module, Tensor};
-use candle_nn::{linear, embedding, VarBuilder, VarMap};
+use candle_nn::{embedding, linear, VarBuilder, VarMap};
 
 fn main() -> candle_core::Result<()> {
     let device = Device::Cpu;
@@ -25,8 +25,12 @@ fn main() -> candle_core::Result<()> {
     println!("Training for {} steps...", num_steps);
 
     for step in 0..num_steps {
-        let input_tokens: Vec<u32> = (0..seq_len).map(|_| rand::random::<u32>() % vocab_size as u32).collect();
-        let target_tokens: Vec<u32> = (0..seq_len).map(|_| rand::random::<u32>() % vocab_size as u32).collect();
+        let input_tokens: Vec<u32> = (0..seq_len)
+            .map(|_| rand::random::<u32>() % vocab_size as u32)
+            .collect();
+        let target_tokens: Vec<u32> = (0..seq_len)
+            .map(|_| rand::random::<u32>() % vocab_size as u32)
+            .collect();
 
         let input = Tensor::new(input_tokens.as_slice(), &device)?.unsqueeze(0)?;
         let target = Tensor::new(target_tokens.as_slice(), &device)?.unsqueeze(0)?;
