@@ -112,6 +112,19 @@ impl Worker {
                         if let Some(ready) = &self.ready {
                             ready.store(false, Ordering::SeqCst);
                         }
+                        {
+                            let mut scheduler = self.scheduler.lock().await;
+                            let ids: Vec<u64> = scheduler
+                                .running_queue
+                                .iter()
+                                .map(|r| r.id)
+                                .chain(scheduler.waiting_queue.iter().map(|r| r.id))
+                                .collect();
+                            // Dropping each Request drops its token_sender, ending client streams.
+                            for id in ids {
+                                scheduler.cancel_request(id);
+                            }
+                        }
                         return Err(anyhow::anyhow!(
                             "circuit breaker tripped after {} consecutive errors",
                             self.breaker.consecutive_errors()

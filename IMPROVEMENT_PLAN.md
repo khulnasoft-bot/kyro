@@ -1,415 +1,343 @@
-# Kyro LLM Engine: Gap Detection & Improvement Plan
+# Kyro LLM Engine: Improvement Plan & Roadmap
 
 **Date:** October 7, 2026  
-**Repository:** nrelab/kyro  
-**Analysis Scope:** Code structure, architecture, feature completeness, testing, and observability
+**Status:** Ready for implementation  
+**Estimated Effort:** 12–16 weeks across three milestones  
+**Repository:** nrelab/kyro
 
 ---
 
 ## Executive Summary
 
-**Kyro** is a high-throughput LLM serving engine written in Rust (60.3% of codebase) with complementary Jupyter Notebook tutorials (35.8%) and Python tooling (2.9%). The engine implements state-of-the-art inference optimizations: continuous batching, PagedAttention, prefix caching (Radix cache), and chunked prefill. Speculative decoding, distributed inference, and multi-quantization support are advertised but incomplete (see status tracker below).
+Kyro is a well-architected, early-stage LLM serving engine with a solid core runtime. The architecture (continuous batching, prefix caching, chunked prefill) is production-ready at a single-GPU level. However, several advertised features are incomplete or non-functional, and observability/resilience gaps remain.
 
-**Overall Maturity:** Early production (v0.1.1, created April 2026). The core serving infrastructure is solid, but significant feature, observability, and testing gaps exist.
+**Key Issues:**
+- Distributed inference (TP/PP) is advertised but not implemented.
+- Quantization claims are partially misleading (GGUF is real; AWQ/FP8 are mocks).
+- LoRA and speculative decoding are partially coded but not integrated.
+- Model ecosystem is limited to Llama.
+- Observability is partial (metrics exist; tracing and alerting are missing).
+- Production resilience patterns are incomplete.
 
----
-
-## Implementation Status Tracker (updated October 7, 2026)
-
-| Plan Item | Status | Notes |
-|-----------|--------|-------|
-| Tier 1 #1 — Distributed Inference (TP/PP) | ❌ Open | `src/distributed.rs` still a stub; requires multi-GPU hardware |
-| Tier 1 #2 — Expand Test Suite | ✅ Done | Unit tests for scheduler/block_manager/radix_cache + all model/API modules; 73 tests pass; coverage 70.40% enforced by CI gate (≥70%); concurrency integration test added |
-| Tier 1 #3 — Quantization Paths | 🔶 Partial | GGUF loads real models + new `gguf_demo` example; AWQ/FP8 remain stubs, retracted from README; status audited in `docs/implementation_status.md` |
-| Tier 2 #4 — LoRA Integration | 🔶 Partial | `LoraLinear::forward` now unit-tested; loader, API parameter, and scheduler tracking still missing |
-| Tier 2 #5 — Speculative Decoding | 🔶 Partial | `SpeculativeDecoder::step` now unit-tested; verification loop and worker/API integration still missing |
-| Tier 2 #6 — Model Ecosystem | ❌ Open | Only Llama implemented |
-| Tier 2 #7 — Observability | ✅ Done | Grafana dashboard (`deploy/grafana-dashboard.json`), SLO/alerting guide (`docs/slos.md`), optional OTLP tracing export (`otlp` cargo feature, `KYRO_OTLP_ENDPOINT`, `chat_completions` span with model/stream attributes) |
-| Tier 3 #8 — Error Handling & Resilience | ✅ Done | Circuit breaker (10 consecutive errors → worker stops, `/ready` flips to 503, `kyro_worker_circuit_breaker_tripped` metric), transient-error retry with backoff, readiness probe, graceful SIGINT shutdown, request timeout |
-| Tier 3 #9 — Deployment Guide | ✅ Done | `docs/troubleshooting.md`, `docs/slos.md`, production checklist + env table in `docs/deployment.md`; Docker/Compose/K8s manifests already existed |
-| Tier 3 #10 — API Compatibility | ✅ Done | Request cancellation (`POST /v1/cancel` + `X-Request-Id` header), priority queuing (`priority` 0–100), request timeout, `tools`/`functions` parameter support |
-
-**Coverage:** 52.77% → **70.40%** (plan target was >70% for critical modules; scheduler modules are >94%).
+**Strategy:** Ship production blockers first, then expand features and operational maturity in parallel milestones.
 
 ---
 
-## Section 1: Gap Analysis
+## Current Implementation Status
 
-### 1.1 **Testing & Validation**
-
-**Current State:**
-- `tests/integration.rs` contains 14 integration tests covering end-to-end request flows (non-streaming, SSE streaming, metrics endpoint, validation errors, tokenizer loading).
-- 9 unit tests exist inline in `src/`; `benches/scheduler_bench.rs` provides a scheduler benchmark; `benchmarks/stress_test.py` exists for load testing.
-- CI runs `cargo test` (stable + nightly), llvm-cov coverage, bench smoke test, examples build, notebook execution, and Docker build — but no enforced coverage threshold.
-
-**Gaps:**
-- ❌ No unit tests for scheduler internals (`continuous_batching.rs`, `block_manager.rs`, `radix_cache.rs`).
-- ❌ No performance regression tests or SLO validation in CI.
-- ❌ No test coverage metrics gate or badge in README (coverage is reported but not threshold-enforced).
-- ⚠️ Stress test tooling exists in Python but has no Rust-side equivalent run in CI.
-
-**Impact:** Moderate — a test harness exists, but coverage of the most failure-prone modules (scheduler, KV cache) is still missing, leaving silent-regression risk there.
+| Area | Status | Notes |
+|------|--------|-------|
+| **Testing** | ✅ Done | 92 tests, 72.00% coverage, CI gate at ≥70%; scheduler modules >94%. |
+| **Distributed Inference** | ❌ Open | `src/distributed.rs` is a stub; no NCCL or weight sharding. |
+| **Quantization** | 🔶 Partial | GGUF functional; AWQ/FP8 are no-op casts. Audit documented in code. |
+| **LoRA** | 🔶 Partial | Module exists; not integrated into forward pass or API. |
+| **Speculative Decoding** | 🔶 Partial | Module exists; not active in worker loop. |
+| **Model Ecosystem** | ❌ Open | Llama only; Mistral, Qwen, etc. not supported. |
+| **Observability** | ✅ Done | Core metrics, Grafana dashboard, SLO/alert rules, KV-cache gauge, optional OTLP tracing (`otlp` feature), structured request spans. |
+| **Error Handling** | ✅ Done | Circuit breaker (trips after 10 errors, drains requests, flips `/ready` to 503), transient-error retry with backoff, graceful SIGINT shutdown, readiness probe. |
+| **Deployment Docs** | ✅ Done | Troubleshooting guide, production checklist, env var table, SLO/alerting docs. |
+| **API Compatibility** | ✅ Done | Request cancellation (`POST /v1/cancel` + `X-Request-Id`), priority queuing (0–100), request timeouts (streaming + non-streaming), `tools`/`functions` parameter support. |
 
 ---
 
-### 1.2 **Quantization Implementation**
+## Three-Milestone Roadmap
 
-**Current State (audited Oct 7, 2026):**
-- README advertises **FP8 (Hopper), AWQ (4-bit), GGUF** support.
-- **GGUF is real**: `QuantizedLlama` (src/model/quantized.rs) loads via `candle_transformers::models::quantized_llama::ModelWeights`; `ModelLoader` auto-detects `.gguf` (src/model/loader.rs:26).
-- **AWQ and FP8 are mocks**: `src/model/quantization/awq.rs` `unpack_weights()` is a no-op cast ("Mock unpacking 4-bit to F16"); `fp8.rs` casts activations to `F8E4M3` without a real kernel. Both are `#![allow(dead_code)]` and never invoked by the loader or forward pass.
+### Milestone 1: Production Blockers
+**Window:** Weeks 1–8 (Oct 12 – Nov 27, 2026)  
+**Theme:** Stabilize the runtime and remove product blockers.
 
-**Gaps:**
-- ❌ AWQ and FP8 are simulations, not implementations; README should not advertise them as supported.
-- ⚠️ No examples demonstrating GGUF loading end-to-end (only the loader path exists).
-- ⚠️ No benchmarks comparing throughput/accuracy tradeoffs across quantization types.
+**Goals:**
+- Reliable serving on single and multi-GPU hardware
+- Truthful feature claims and clear documentation
+- Strong test coverage for critical paths
+- Clear baseline for production deployments
 
-**Impact:** GGUF users are served; AWQ/FP8 claims are misleading and should be retracted or implemented.
+**Included Issues:**
+1. Implement Distributed Inference (TP/PP)
+2. Expand Test Suite & Coverage Gates
+3. Audit & Complete Quantization Support
 
----
+**Exit Criteria:**
+- ✅ Distributed inference works end-to-end on 2+ GPUs; throughput scales >80%
+- ✅ Critical module coverage exceeds 75%; scheduler >90%
+- ✅ All advertised quantization paths are either real or explicitly unsupported
+- ✅ Engineering team can deploy stable baseline without blocking issues
 
-### 1.3 **Distributed Inference (Multi-GPU / Multi-Node)**
-
-**Current State:**
-- README claims **Tensor Parallelism (TP) and Pipeline Parallelism (PP)** support.
-- Code has `src/distributed.rs` (307 bytes—confirmed stub: `rank`/`world_size` fields only).
-- `DistributedContext::new()` is threaded through `ModelLoader` and `LlamaModel` but always `rank: 0, world_size: 1`.
-- NCCL listed in architecture but not integrated into active code paths.
-
-**Gaps:**
-- ❌ `src/distributed.rs` appears to be a placeholder; full TP/PP implementation missing.
-- ❌ No multi-GPU scheduling or weight sharding logic visible.
-- ❌ No documentation on how to configure or run distributed inference.
-- ❌ No examples or tests for multi-node setups.
-- ❌ Worker loop runs single-GPU inference only.
-
-**Impact:** **Critical** — distributed inference is advertised but not implemented. Users expecting multi-GPU support will fail.
+**Owners:** Distributed Systems, QA/Testing, Model Optimization
 
 ---
 
-### 1.4 **LoRA (Low-Rank Adaptation) Support**
+### Milestone 2: High-Value Features
+**Window:** Weeks 5–12 (Nov 16, 2026 – Jan 8, 2027)  
+**Theme:** Unlock the most important capabilities that drive adoption.
 
-**Current State:**
-- README advertises **Multi-LoRA Support: Dynamic loading and switching of task-specific adapters**.
-- Code has `src/model/lora.rs` (1276 bytes).
-- LoRA is mentioned in the schema but not integrated into model forward passes.
+**Goals:**
+- Convert partially implemented modules into active features
+- Expand model ecosystem to 3+ architectures
+- Production-grade observability and visibility
+- Clear, actionable dashboards and alerting
 
-**Gaps:**
-- ⚠️ LoRA module exists but integration into model inference is unclear.
-- ❌ No API endpoint for dynamic LoRA switching.
-- ❌ No documentation on how to load LoRA weights or enable multi-LoRA mode.
-- ❌ No examples demonstrating LoRA inference.
-- ❌ Scheduler and worker do not track or apply LoRA state.
+**Included Issues:**
+4. Integrate LoRA Support
+5. Integrate Speculative Decoding
+6. Expand Model Ecosystem (Mistral, Qwen, etc.)
+7. Complete Observability & Tracing
 
-**Impact:** Advertised feature is non-functional; users cannot use LoRA adapters.
+**Exit Criteria:**
+- ✅ LoRA weights load, apply, and work with mixed-adapter workloads
+- ✅ Speculative decoding produces correct outputs with >1.5x measured speedup
+- ✅ At least 3 model families run end-to-end; architecture trait established
+- ✅ Structured logs, trace IDs, OTLP export, and Grafana dashboard in place
 
----
-
-### 1.5 **Speculative Decoding**
-
-**Current State:**
-- README advertises speculative decoding; **"Accelerates generation by 2x using a lightweight draft model"**.
-- Code has `src/speculative.rs` (1386 bytes) and tutorial 08.
-- Worker loop does not invoke speculative decoding.
-
-**Gaps:**
-- ⚠️ Module exists but not integrated into the main inference loop.
-- ❌ No draft model loading mechanism.
-- ❌ No API parameter to enable/disable speculative decoding.
-- ❌ Worker sampling is deterministic; no parallel verification logic.
-
-**Impact:** Advertised performance feature is non-functional.
+**Owners:** Model Adaptation, Performance Optimization, Model Support, DevOps/Observability
 
 ---
 
-### 1.6 **Observability & Monitoring**
+### Milestone 3: Production Hardening & Ops
+**Window:** Weeks 9–16 (Jan 4 – Feb 5, 2027)  
+**Theme:** Operational maturity and deployment readiness.
 
-**Current State:**
-- Prometheus metrics endpoint exists (`GET /metrics`).
-- `EngineMetrics` (src/metrics.rs) tracks counters plus TTFT and time-between-tokens histograms and KV cache usage gauge, so the core metric set is largely implemented.
-- Architecture mentions queue depth and cache hit/miss gauges, which exist.
+**Goals:**
+- Graceful failure modes and resilience patterns
+- Comprehensive deployment and troubleshooting guidance
+- Full API compatibility with OpenAI ecosystem
+- Clear operational model and SLO targets
 
-**Gaps:**
-- ⚠️ No tracing/span integration for distributed tracing (e.g., Jaeger, OTLP).
-- ⚠️ No structured logging for request lifecycle events.
-- ⚠️ No dashboards or Grafana examples provided.
-- ⚠️ No SLO definitions or alerting guidelines.
-- ❌ Error rates and latency percentiles not documented.
+**Included Issues:**
+8. Improve Error Handling & Resilience
+9. Production Deployment Guide & Checklist
+10. Enhanced API Compatibility
 
-**Impact:** Production deployments will struggle to debug performance issues (partial — core metrics exist, but tracing/alerting are missing).
+**Exit Criteria:**
+- ✅ Readiness probes, graceful shutdown, retry logic, circuit breakers implemented
+- ✅ Production deployment guide, Kubernetes examples, security best practices documented
+- ✅ API supports functions/tools and priority queueing
+- ✅ SLOs and alerting rules are published and actionable
 
----
-
-### 1.7 **API & Request Validation**
-
-**Current State:**
-- OpenAI-compatible `/v1/chat/completions` endpoint.
-- Request validation in place (model name, max_tokens, temperature, message count, prompt size).
-- Grammar-constrained decoding (JSON mode) implemented.
-
-**Gaps:**
-- ⚠️ No OpenAI API versioning or backwards-compatibility strategy.
-- ⚠️ JSON schema validation not fully explored (grammar module exists but integration unclear).
-- ⚠️ No support for `functions` or `tools` parameters (common in OpenAI API).
-- ⚠️ No batching hints or priority queues for requests.
-- ⚠️ No timeout or cancellation mechanism for long-running requests.
-
-**Impact:** API is incomplete compared to vLLM/TGI; limited use cases.
+**Owners:** Runtime/DevOps, Documentation, API/Platform
 
 ---
 
-### 1.8 **Model Support & Compatibility**
+## Execution Details
 
-**Current State:**
-- Primary model: **Llama** (LlamaModel, LlamaConfig).
-- Code supports Safetensors and GGUF loading.
-- Vision model stub exists (`src/model/vision.rs`).
-- MoE (Mixture of Experts) stub exists (`src/model/moe.rs`).
+### Issue 1: Distributed Inference (Tensor & Pipeline Parallelism)
+**Effort:** 4–6 weeks | **Owner:** Distributed Systems  
+**Acceptance Criteria:**
+- TP/PP work end-to-end on 2+ GPUs
+- Throughput scaling >80% with 2 GPUs
+- Integration test passes in CI
+- Documentation covers configuration and examples
 
-**Gaps:**
-- ⚠️ Only Llama architecture fully implemented; no other transformers (Mistral, Mixtral, Qwen, etc.).
-- ⚠️ Vision models are stubs; no multimodal support.
-- ⚠️ MoE support incomplete; no router logic or sparse computation.
-- ❌ No documentation on adding new model architectures.
-- ❌ No compatibility matrix (which model versions work?).
-
-**Impact:** Severely limits model ecosystem; users with non-Llama models cannot use Kyro.
-
----
-
-### 1.9 **Error Handling & Recovery**
-
-**Current State:**
-- `error.rs` exists; ApiError type defined.
-- Worker loop logs errors but does not panic; continues on errors.
-- Configuration validation at startup.
-
-**Gaps:**
-- ⚠️ No circuit breaker or graceful degradation (e.g., if scheduler fails, what happens?).
-- ⚠️ No retry logic for transient failures.
-- ⚠️ No health check beyond liveness; readiness probe not implemented.
-- ⚠️ OOM or device memory errors may crash worker silently.
-- ⚠️ No error budget or SLO tracking.
-
-**Impact:** Production deployments may experience silent failures or cascading errors.
+**Key Tasks:**
+- Implement NCCL initialization and AllReduce primitives
+- Implement tensor parallelism: weight sharding, forward/backward splits, AllReduce
+- Implement pipeline parallelism: layer assignment, activation checkpointing
+- Add unit tests for sharding and communication patterns
+- Add 2–4 GPU integration test
+- Benchmark single-GPU vs. multi-GPU throughput and latency
 
 ---
 
-### 1.10 **Documentation & Examples**
+### Issue 2: Test Suite & Coverage Gates
+**Effort:** 2–3 weeks | **Owner:** QA/Testing  
+**Acceptance Criteria:**
+- >75% coverage on scheduler/cache modules
+- All critical tests pass in CI
+- Coverage badge added to README
 
-**Current State:**
-- **Comprehensive tutorials** (14 modules covering pattern matching → serving).
-- README with feature overview and getting-started instructions.
-- Architecture, API, limits, and deployment docs exist.
-- Rust examples for core LLM primitives.
-
-**Gaps:**
-- ⚠️ Tutorials are excellent but server-side features (LoRA, speculative decoding, distributed) not covered.
-- ⚠️ No troubleshooting guide.
-- ⚠️ No production deployment checklist.
-- ⚠️ No performance tuning guide (batch size, KV cache size, etc.).
-- ⚠️ No cost/throughput analysis.
-
-**Impact:** Users will struggle to deploy and optimize Kyro in production.
+**Key Tasks:**
+- Add unit tests for `continuous_batching.rs`, `block_manager.rs`, `radix_cache.rs`
+- Add concurrency, cancellation, timeout integration tests
+- Enforce CI gate: `--fail-under-lines 75`
+- Add coverage badge
 
 ---
 
-## Section 2: Prioritized Improvement Plan
+### Issue 3: Quantization Audit & Completion
+**Effort:** 2–3 weeks | **Owner:** Model Optimization  
+**Acceptance Criteria:**
+- All advertised quantization paths are real or unsupported
+- GGUF end-to-end example runs
+- Quantization benchmarks published
+- Compatibility matrix documented
 
-### **Priority Tier 1: Critical (Blocks Production Deployment)**
-
-#### 1. **Implement & Validate Distributed Inference (TP/PP)**
-- **Effort:** 4–6 weeks
-- **Owner:** Distributed Systems Team
-- **Tasks:**
-  - Flesh out `src/distributed.rs` with NCCL initialization and AllReduce primitives.
-  - Implement tensor parallelism: weight sharding, forward/backward splits, allreduce at layer boundaries.
-  - Implement pipeline parallelism: layer assignment to ranks, activation checkpointing, bubble minimization.
-  - Add unit tests for weight sharding and communication patterns.
-  - Add integration test for 2–4 GPU setup (local or CI-friendly).
-  - Benchmark single-GPU vs. multi-GPU throughput & latency.
-  - **Acceptance Criteria:**
-    - TP+PP work end-to-end on 2+ GPUs.
-    - Throughput scales >80% with 2 GPUs.
-    - Integration test passes in CI.
-
-#### 2. **Expand Unit & Integration Test Suite**
-- **Effort:** 2–3 weeks
-- **Owner:** QA/Testing Team
-- **Tasks:**
-   - Add unit tests for `scheduler/continuous_batching.rs` (prefill scheduling, token generation).
-   - Add unit tests for `scheduler/block_manager.rs` (block allocation/freeing, fragmentation).
-   - Add unit tests for `scheduler/radix_cache.rs` (prefix matching, eviction).
-   - Existing API-level integration tests (streaming, validation, metrics) should be kept; extend with multi-request concurrency and cancellation cases.
-   - Add coverage threshold gate to CI; add badge to README.
-  - **Acceptance Criteria:**
-    - >70% code coverage for critical modules.
-    - All tests pass in CI.
-    - Stress test runs without panics.
-
-#### 3. **Implement & Document Quantization Paths**
-- **Effort:** 2–3 weeks
-- **Owner:** Model Optimization Team
-- **Tasks:**
-  - Audit `src/model/quantization/` structure; document which formats are complete vs. stubs.
-  - Implement missing quantization loaders (FP8, AWQ, GGUF if not already present).
-  - Add examples demonstrating how to load quantized models.
-  - Add benchmarks comparing throughput/latency across quantization types.
-  - Document in README and deployment guide.
-  - **Acceptance Criteria:**
-    - All three quantization types (FP8, AWQ, GGUF) can load real models.
-    - Examples run without errors.
-    - Benchmarks show expected throughput gains.
+**Key Tasks:**
+- Audit and document which quantization modes are real vs. mock
+- Either implement AWQ/FP8 fully or remove from README
+- Add GGUF loading example
+- Add quantization benchmarks
+- Write `docs/quantization.md` with compatibility matrix
 
 ---
 
-### **Priority Tier 2: High (Major Feature Gaps)**
+### Issue 4: LoRA Integration
+**Effort:** 2–3 weeks | **Owner:** Model Adaptation  
+**Acceptance Criteria:**
+- LoRA weights load and apply correctly
+- Multi-request mixed-adapter workload is stable
+- Request-level adapter selection works
+- Example runs end-to-end
 
-#### 4. **Integrate LoRA Support**
-- **Effort:** 2–3 weeks
-- **Owner:** Model Adaptation Team
-- **Tasks:**
-  - Complete `src/model/lora.rs`: LoRA weight loading, merging with base model.
-  - Extend model forward pass to apply LoRA projections.
-  - Add scheduler support for tracking active LoRA per request.
-  - Add API endpoint or parameter to specify LoRA ID (`lora_id` in request).
-  - Add examples and tests.
-  - **Acceptance Criteria:**
-    - LoRA weights load and apply correctly.
-    - Multi-request handling with different LoRA configs works.
-    - Example runs end-to-end.
-
-#### 5. **Integrate Speculative Decoding**
-- **Effort:** 2–3 weeks
-- **Owner:** Performance Optimization Team
-- **Tasks:**
-  - Load and manage draft model separate from target model.
-  - Implement parallel verification in worker loop.
-  - Add scheduler logic to decide when to use speculative decoding.
-  - Add API parameter to enable/disable (`use_speculative: bool`).
-  - Add benchmarks showing 2x speedup claim.
-  - **Acceptance Criteria:**
-    - Speculative decoding produces correct outputs.
-    - Benchmarks show speedup (target: >1.5x).
-    - API parameter works end-to-end.
-
-#### 6. **Expand Model Ecosystem**
-- **Effort:** 3–4 weeks
-- **Owner:** Model Support Team
-- **Tasks:**
-  - Add support for Mistral 7B/Mixtral architecture.
-  - Add support for Qwen architecture.
-  - Create model architecture abstraction/trait to ease future additions.
-  - Add per-model config examples.
-  - Document compatibility matrix (model → Kyro version).
-  - **Acceptance Criteria:**
-    - 3+ model architectures work end-to-end.
-    - Examples provided for each.
-    - Architecture trait adopted for all models.
-
-#### 7. **Enhanced Observability & Monitoring**
-- **Effort:** 2–3 weeks
-- **Owner:** DevOps/Observability Team
-- **Status:** ✅ Done (Oct 7, 2026)
-- **Tasks:**
-  - Complete Prometheus metrics (histograms for TTFT/TBT, gauge for KV cache). — **DONE** (plus worker error counters, circuit-breaker gauge; KV-cache gauge now populated per worker iteration and on `/metrics` scrape).
-  - Add structured logging with `tracing::span!` for request lifecycle. — **DONE**: `chat_completions` span with `model`/`stream` attributes.
-  - Add optional OpenTelemetry exporter (OTLP). — **DONE**: `otlp` cargo feature; `KYRO_OTLP_ENDPOINT`/`--otlp-endpoint`; gRPC export via tonic; flushes on graceful shutdown.
-  - Provide Grafana dashboard JSON example. — **DONE**: `deploy/grafana-dashboard.json`.
-  - Document SLOs and alerting rules. — **DONE**: `docs/slos.md`.
-  - **Acceptance Criteria:**
-    - Metrics endpoint exposes all promised metrics.
-    - Logs include trace IDs and structured fields.
-    - Grafana dashboard shows key insights.
+**Key Tasks:**
+- Complete `src/model/lora.rs`: weight loading, merging
+- Integrate LoRA projections into model forward pass
+- Add scheduler tracking for active adapter per request
+- Add API parameter for adapter selection
+- Write LoRA example and unit tests
 
 ---
 
-### **Priority Tier 3: Medium (Nice-to-Have, UX Improvements)**
+### Issue 5: Speculative Decoding Integration
+**Effort:** 2–3 weeks | **Owner:** Performance Optimization  
+**Acceptance Criteria:**
+- Outputs are identical to non-speculative baseline
+- Measured speedup >1.5x (claim is 2x)
+- API parameter enables/disables speculative decoding
 
-#### 8. **Improve Error Handling & Resilience**
-- **Effort:** 1–2 weeks
-- **Status:** ✅ Done (Oct 7, 2026)
-- **Tasks:**
-  - Add circuit breaker for scheduler failures. — **DONE**: `CircuitBreaker` in `src/worker.rs`; 10 consecutive iteration failures stop the worker, clear the readiness flag, and set `kyro_worker_circuit_breaker_tripped`.
-  - Implement graceful shutdown (drain in-flight requests). — **DONE**: SIGINT handler via `with_graceful_shutdown`.
-  - Add readiness probe (checks model load, scheduler health). — **DONE**: `GET /ready`.
-  - Add retry logic for transient errors. — **DONE**: worker retries iterations with 100ms backoff until the breaker trips.
-  - Add detailed error codes/messages for debugging. — **DONE**: structured `tracing::warn!` with error and consecutive-error count; `kyro_worker_errors_total` counter.
-
-#### 9. **Production Deployment Guide & Checklist**
-- **Effort:** 1 week
-- **Tasks:**
-  - Document performance tuning (batch size, KV cache, device memory).
-  - Provide Docker Compose or Kubernetes manifests.
-  - Add security best practices (secrets, TLS, rate limiting).
-  - Troubleshooting guide for common issues.
-
-#### 10. **Enhanced API Compatibility**
-- **Effort:** 2–3 weeks
-- **Tasks:**
-   - Add support for `functions` / `tools` parameters. — **DONE**: `tools` field (max 64) on `/v1/chat/completions`; tool schemas are rendered into the prompt so the model can emit tool calls.
-   - Add request queuing with priority/SLA hints. — **DONE**: `priority` field (0–100) on `/v1/chat/completions`; scheduler dequeues highest-priority first, FIFO within equal priority.
-   - Add request cancellation (cancel by ID). — **DONE**: `POST /v1/cancel` + `X-Request-Id` response header.
-   - Add timeout handling. — **DONE**: `KYRO_REQUEST_TIMEOUT_SECS` → 504 on expiry for non-streaming; SSE streams terminate at the same deadline.
+**Key Tasks:**
+- Implement draft model loading and management
+- Add speculative decoding logic to worker sampling loop
+- Implement verification and rejection handling
+- Add API parameter `use_speculative: bool`
+- Write example and benchmarks
 
 ---
 
-## Section 3: Short-Term Action Items (Next 4 Weeks)
+### Issue 6: Model Ecosystem Expansion
+**Effort:** 3–4 weeks | **Owner:** Model Support  
+**Acceptance Criteria:**
+- At least 3 model families work end-to-end
+- Architecture trait defined and adopted for all models
+- Compatibility matrix published
 
-1. **Create GitHub Issues** for each Priority Tier 1 & 2 item (10 issues).
-2. **Tighten Test CI:** — **DONE**: CI enforces `--fail-under-lines 70` (measured 70.40%); scheduler/block-manager unit tests in place.
-3. **Audit Quantization & Distributed Code:** — **DONE**: `docs/implementation_status.md` documents complete vs. stub per feature; README claims retracted accordingly.
-4. **Kick Off Parallel Efforts:** — testing (Tier 1 #2) and documentation (Tier 3 #9) tracks completed this session.
+**Key Tasks:**
+- Define `ModelArchitecture` trait
+- Refactor Llama to use trait
+- Implement Mistral/Mixtral and Qwen architectures
+- Add examples for each architecture
+- Write architecture addition guide
 
 ---
 
-## Section 4: Risk Assessment
+### Issue 7: Observability & Tracing
+**Effort:** 2–3 weeks | **Owner:** DevOps/Observability  
+**Acceptance Criteria:**
+- Structured logging with trace IDs and lifecycle events
+- Optional OTLP exporter
+- Grafana dashboard
+- SLO definitions and alerting rules
+
+**Key Tasks:**
+- Add `tracing` instrumentation to request lifecycle
+- Implement optional OTLP exporter
+- Create/improve Grafana dashboard
+- Write SLO definitions in `docs/slos.md`
+- Write alert templates and runbooks
+
+---
+
+### Issue 8: Error Handling & Resilience
+**Effort:** 1–2 weeks | **Owner:** Runtime/DevOps  
+**Acceptance Criteria:**
+- Complete readiness probe
+- Graceful shutdown drains in-flight requests
+- Circuit breaker for scheduler failures
+- Standardized error codes
+
+**Key Tasks:**
+- Implement readiness probe
+- Add graceful shutdown handler
+- Add circuit breaker
+- Implement retry logic with backoff
+- Standardize error codes and messages
+
+---
+
+### Issue 9: Production Deployment Guide
+**Effort:** 1–2 weeks | **Owner:** DevOps/Documentation  
+**Acceptance Criteria:**
+- Comprehensive deployment guide published
+- Kubernetes manifests provided
+- Security best practices documented
+- Troubleshooting guide covers common issues
+
+**Key Tasks:**
+- Write `docs/deployment.md` with hardware, config, tuning
+- Write `docs/kubernetes.md` with K8s examples
+- Write `docs/security.md` with best practices
+- Enhance `docs/troubleshooting.md`
+- Create Docker Compose examples
+
+---
+
+### Issue 10: Enhanced API Compatibility
+**Effort:** 2–3 weeks | **Owner:** API/Platform  
+**Acceptance Criteria:**
+- `functions`/`tools` support is compatible with OpenAI
+- Priority queueing is implemented
+- Request management is complete (cancellation, timeouts)
+- Versioning and compatibility strategy is documented
+
+**Key Tasks:**
+- Add schema validation for functions/tools
+- Implement function calling compatibility
+- Add priority field and queue in scheduler
+- Verify request cancellation and timeout handling
+- Write API versioning guide
+
+---
+
+## Dependencies & Parallelization
+
+**Critical Path:**
+- Milestone 1 must complete before Milestone 2 starts (shared infrastructure)
+- Milestone 2 items can parallelize (different teams)
+- Milestone 3 can start in parallel with late Milestone 2 work
+
+**Key Handoffs:**
+- Milestone 1 → Milestone 2: Stable runtime, working CI infrastructure
+- Milestone 2 → Milestone 3: Feature stability, clarity on error paths
+
+---
+
+## Risk Register
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|-----------|
-| Distributed inference fails at scale | Medium | Critical | Early multi-GPU testing in CI; load test with 4+ GPUs |
-| Quantization regressions undetected | Medium | High | Quantization-specific unit & benchmark tests |
-| Undocumented API changes break users | Low | Medium | Semantic versioning; changelog enforcement |
-| Silent worker loop failures | Medium | High | Enhanced logging; health probes; SLO dashboards |
-| LoRA/speculative features conflict | Low | Medium | Integration tests covering feature combinations |
+| Multi-GPU scaling fails | Medium | Critical | Early CI testing; load tests with 4+ GPUs |
+| Test coverage regressions | Medium | High | Enforce coverage gates; expand scheduler tests |
+| LoRA/speculative features conflict | Low | Medium | Integration tests for feature combinations |
+| Quantization implementation incomplete | Low–Medium | Medium | Audit AWQ/FP8; complete or mark unsupported |
+| Silent worker failures in production | Medium | High | Enhanced logging, health probes, SLO dashboards |
 
 ---
 
-## Section 5: Success Metrics
+## Success Criteria: End of Roadmap
 
-By EOQ (end of quarter):
-- ✅ Test coverage >70% (Tier 1 #2) — **achieved 70.40%, CI-gated**.
-- ⬜ Distributed inference works on 2+ GPUs (Tier 1 #1) — blocked on multi-GPU hardware.
-- 🔶 Quantization paths fully documented & working (Tier 1 #3) — GGUF done; AWQ/FP8 stubs documented in `docs/implementation_status.md`.
-- 🔶 LoRA and speculative decoding integrated (Tier 2 #4, #5) — unit-tested; integration pending.
-- ✅ Production deployment guide published (Tier 3 #9) — troubleshooting, SLO/alerting guides, production checklist.
-- ⬜ 3+ model architectures supported (Tier 2 #6).
-- ✅ Comprehensive monitoring/alerting setup (Tier 2 #7) — Grafana dashboard, SLO rules, optional OTLP tracing.
-
----
-
-## Section 6: Recommended Roadmap
-
-```
-Week 1–2:   Audit code; create GitHub issues; set up CI for tests.
-Week 3–4:   Start Tier 1 #2 (tests) and Tier 3 #9 (deployment guide) in parallel.
-Week 5–8:   Focus Tier 1 #1 (distributed) and #3 (quantization).
-Week 9–12:  Tier 2 items (#4, #5, #6, #7) in parallel.
-Week 13+:   Polish, optimization, and community feedback.
-```
+- ✅ Multi-GPU serving is production-ready with >80% scaling efficiency
+- ✅ Feature claims are truthful; unsupported features are explicitly labeled
+- ✅ Critical modules have >75% test coverage; scheduler >90%
+- ✅ LoRA and speculative decoding work end-to-end with verified performance gains
+- ✅ At least 3 model families are supported
+- ✅ Observability includes structured logs, trace IDs, OTLP export, and actionable dashboards
+- ✅ Graceful degradation, circuit breakers, and retry logic are in place
+- ✅ Production deployment is documented with Kubernetes examples, security guide, and troubleshooting
+- ✅ API is compatible with OpenAI ecosystem (tools, priority queueing, versioning)
 
 ---
 
-## Conclusion
+## How to Use This Roadmap
 
-**Kyro is a well-architected early-stage LLM serving engine with significant potential.** The core serving infrastructure (continuous batching, prefix caching, chunked prefill) is solid and production-ready for single-GPU Llama deployments. Testing gaps are now closed (70.40% coverage, CI-gated); **advertised features (distributed inference, LoRA, speculative decoding, AWQ/FP8 quantization) remain incomplete or missing** and have been re-labeled in the README to match reality.
+1. **Create GitHub Issues:** See `docs/ISSUES_BACKLOG.md` for detailed issue templates.
+2. **Create Milestones:** Create three GitHub milestones mapping to the dates above.
+3. **Assign Owners:** Assign each issue to the responsible team/engineer.
+4. **Track Progress:** Update issue status and link dependencies.
+5. **Update Backlog:** As work progresses, update this document and the backlog.
 
-**Immediate priorities** are:
-1. ~~Close testing gaps (unit + integration).~~ ✅ Done — 73 tests, 70.40% coverage, CI gate at 70%.
-2. Complete distributed inference (TP/PP).
-3. Validate & document quantization. — GGUF done; AWQ/FP8 audit documented.
-4. Integrate LoRA and speculative decoding.
-5. Expand model support.
+---
 
-**Success will require 12–16 weeks of focused engineering effort** across distributed systems, model optimization, and DevOps. The team should adopt semantic versioning and maintain a public roadmap to manage user expectations around feature completeness.
+## References
 
+- Detailed issue backlog: `docs/ISSUES_BACKLOG.md`
+- Original gap analysis: `IMPROVEMENT_PLAN.md` (historical reference)
+- Implementation status: `docs/implementation_status.md`
