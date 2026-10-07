@@ -399,8 +399,9 @@ pub async fn metrics_handler(State(state): State<Arc<AppState>>) -> impl IntoRes
                     String::from_utf8(buffer).unwrap_or_default(),
                 )
                     .into_response(),
-                Err(e) => ApiError::internal(format!("Failed to encode metrics: {}", e))
-                    .into_response(),
+                Err(e) => {
+                    ApiError::internal(format!("Failed to encode metrics: {}", e)).into_response()
+                }
             }
         }
         None => ApiError::unavailable("Metrics registry not configured").into_response(),
