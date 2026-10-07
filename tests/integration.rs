@@ -33,7 +33,9 @@ fn make_test_tokenizer() -> (LuminaTokenizer, tempfile::TempPath) {
         .build()
         .unwrap();
     let mut tokenizer = tokenizers::Tokenizer::new(model);
-    tokenizer.with_pre_tokenizer(Some(tokenizers::pre_tokenizers::whitespace::Whitespace::default()));
+    tokenizer.with_pre_tokenizer(Some(
+        tokenizers::pre_tokenizers::whitespace::Whitespace::default(),
+    ));
     let path = tempfile::NamedTempFile::new().unwrap();
     tokenizer.save(path.path(), false).unwrap();
     let tok = LuminaTokenizer::from_file(path.path()).unwrap();
